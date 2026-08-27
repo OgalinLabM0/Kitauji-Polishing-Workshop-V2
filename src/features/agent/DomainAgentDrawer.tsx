@@ -271,3 +271,23 @@ export const DomainAgentDrawer: React.FC<DomainAgentDrawerProps> = ({
     </div>
   );
 };
+
+export const DomainAgentTriggerButton = ({
+  label,
+  onClick,
+  className = '',
+}: {
+  readonly label: string;
+  readonly onClick: () => void;
+  readonly className?: string;
+}) => (
+  <button
+    type="button"
+    className={`kitauji-agent-btn ${className}`}
+    onClick={onClick}
+    title={`打开 ${label}`}
+  >
+    <Bot size={14} className="kitauji-agent-btn-icon" />
+    <span>{label}</span>
+  </button>
+);

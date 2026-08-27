@@ -80,6 +80,7 @@ export interface ProjectReadingPosition {
 export interface ChapterContentBlock {
   readonly blockId: string;
   readonly ordinal: number;
+  readonly domPath?: string;
   readonly sourceLine: number | null;
   readonly tagName: string;
   readonly language: string | null;

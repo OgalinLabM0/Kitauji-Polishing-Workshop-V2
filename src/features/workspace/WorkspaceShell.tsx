@@ -30,6 +30,8 @@ import type { useDisplaySettings } from '../settings/useDisplaySettings';
 import { OverviewPanel } from './OverviewPanel';
 import { guardWorkspaceView, parseWorkspaceHash, workspaceHash, type WorkspaceView } from './workspaceRoute';
 
+import { KitaujiBrandLogo } from '../../components/brand/KitaujiBrandLogo';
+
 interface WorkspaceShellProps {
   readonly onReturn: () => void;
   readonly display: ReturnType<typeof useDisplaySettings>;
@@ -140,7 +142,21 @@ export const WorkspaceShell = ({ onReturn, display }: WorkspaceShellProps) => {
     <main className={`workspace-shell workspace-section-${guardedView}`}>
       <aside className="workspace-nav">
         <div className="workspace-brand">
-          <span className="brand-mark">北</span>
+          <div
+            className="brand-mark"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'none',
+              border: 'none',
+              boxShadow: 'none',
+              padding: 0,
+              flexShrink: 0,
+            }}
+          >
+            <KitaujiBrandLogo size={36} />
+          </div>
           <div>
             <strong>北宇治润色工坊</strong>
             <span>日中小说翻译与润色</span>

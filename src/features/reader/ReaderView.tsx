@@ -1,37 +1,84 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, Columns2, FileText, Languages, Minus, Plus, Sparkles } from 'lucide-react';
-import type { WorkbenchSegment } from '../../core/workflow/models';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  Columns2,
+  Download,
+  Eye,
+  FileText,
+  HelpCircle,
+  Image as ImageIcon,
+  Languages,
+  LayoutGrid,
+  List,
+  Maximize2,
+  Menu,
+  Minimize2,
+  Minus,
+  Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  RotateCcw,
+  Search,
+  Settings,
+  Sliders,
+  Sparkles,
+  Sun,
+  Type,
+  X,
+} from 'lucide-react';
 import type { ProjectLibrary } from '../projects/useProjectLibrary';
+import type { WorkbenchSegment } from '../../core/workflow/models';
+import {
+  useCalibreReader,
+  type ReaderFontFamily,
+  type ReaderLayout,
+  type ReaderMode,
+  type ReaderPreferences,
+  type ReaderTheme,
+} from './useCalibreReader';
 import '../../styles/reader.css';
 
-type ReaderMode = 'final' | 'bilingual' | 'source' | 'original';
-type ReaderTheme = 'paper' | 'sepia' | 'gray' | 'dark';
-
-interface ReaderPreferences {
-  mode: ReaderMode;
-  theme: ReaderTheme;
-  fontSize: number;
-  width: number;
-  brightness: number;
-}
-
-const defaultPreferences: ReaderPreferences = {
+const DEFAULT_PREFERENCES: ReaderPreferences = {
   mode: 'final',
-  theme: 'paper',
+  layout: 'scroll',
+  theme: 'ivory',
+  fontFamily: 'serif',
   fontSize: 18,
-  width: 800,
-  brightness: 100,
+  lineHeight: 1.85,
+  letterSpacing: 0.5,
+  paragraphSpacing: 1.2,
+  indent: true,
+  width: 820,
 };
+
+const PREFS_STORAGE_KEY = 'kitauji_reader_prefs_v2';
 
 const loadPreferences = (): ReaderPreferences => {
   try {
-    return {
-      ...defaultPreferences,
-      ...JSON.parse(localStorage.getItem('kitauji.reader.v1') ?? '{}'),
-    };
-  } catch {
-    return defaultPreferences;
+    const saved = localStorage.getItem(PREFS_STORAGE_KEY);
+    if (saved) return { ...DEFAULT_PREFERENCES, ...JSON.parse(saved) };
+  } catch (e) {
+    console.warn('Failed to load reader preferences:', e);
   }
+  return DEFAULT_PREFERENCES;
+};
+
+const modeLabels: Record<ReaderMode, { label: string; icon: typeof Sparkles; tip: string }> = {
+  final: { label: '润色定稿', icon: Sparkles, tip: '纯中文精修定稿' },
+  bilingual: { label: '双语精读', icon: Columns2, tip: '日中段落对称精读' },
+  source: { label: '日文原著', icon: Languages, tip: '日文原版生肉（含振假名）' },
+  original: { label: '原译参考', icon: FileText, tip: '既有旧译参考文' },
+};
+
+const themeLabels: Record<ReaderTheme, { label: string; color: string }> = {
+  ivory: { label: '象牙暖白', color: '#faf7f2' },
+  white: { label: '极简雅白', color: '#ffffff' },
+  sepia: { label: '羊皮复古', color: '#f4ece1' },
+  dark: { label: '北宇治褐', color: '#1c1917' },
+  oled: { label: 'OLED纯黑', color: '#000000' },
 };
 
 export const ReaderView = ({ library }: { readonly library: ProjectLibrary }) => {
@@ -39,377 +86,505 @@ export const ReaderView = ({ library }: { readonly library: ProjectLibrary }) =>
   const workflow = window.kitaujiDesktop?.workflow;
   const projects = window.kitaujiDesktop?.projects;
   const chapters = project?.chapters ?? [];
-  const [chapterIndex, setChapterIndex] = useState(() =>
-    Math.max(
-      0,
-      chapters.findIndex((chapter) => chapter.chapterId === project?.readingPosition?.chapterId),
-    ),
-  );
-  const [segments, setSegments] = useState<readonly WorkbenchSegment[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [preferences, setPreferences] = useState(loadPreferences);
-  const chapter = chapters[chapterIndex];
-  const isBilingual =
-    project?.project.contentMode === 'bilingual' ||
-    segments.some((s) => Boolean(s.originalTranslation && s.originalTranslation.trim()));
 
+  const [chapterIndex, setChapterIndex] = useState(() => {
+    if (!project?.readingPosition?.chapterId) return 0;
+    const idx = chapters.findIndex((c) => c.chapterId === project.readingPosition!.chapterId);
+    return idx >= 0 ? idx : 0;
+  });
+
+  const [segments, setSegments] = useState<readonly WorkbenchSegment[]>([]);
+  const [preferences, setPreferences] = useState<ReaderPreferences>(loadPreferences);
+  const [sidebarTab, setSidebarTab] = useState<'toc' | 'gallery' | 'stats'>('toc');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [tocSearch, setTocSearch] = useState('');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const chapter = chapters[chapterIndex] ?? null;
+
+  // Save preferences
   useEffect(() => {
-    localStorage.setItem('kitauji.reader.v1', JSON.stringify(preferences));
+    try {
+      localStorage.setItem(PREFS_STORAGE_KEY, JSON.stringify(preferences));
+    } catch (e) {
+      console.warn('Failed to save reader preferences:', e);
+    }
   }, [preferences]);
 
-  const load = useCallback(async () => {
-    if (!project || !chapter) return;
-    setLoading(true);
-    try {
-      const translated: WorkbenchSegment[] = [];
-      if (workflow) {
-        let offset = 0;
-        while (true) {
-          const page = await workflow.workbench(project.project.projectId, chapter.chapterId, offset, 200);
-          translated.push(...page.segments);
-          if (offset + page.limit >= page.total) break;
-          offset += page.limit;
-        }
-      }
-      if (translated.length) {
-        setSegments(translated);
-      } else if (projects) {
-        const blocks = [] as NonNullable<
-          Awaited<ReturnType<typeof projects.readChapter>>
-        >['blocks'][number][];
-        let sourceOffset = 0;
-        while (true) {
-          const source = await projects.readChapter(
-            project.project.projectId,
-            chapter.chapterId,
-            sourceOffset,
-            200,
-          );
-          if (!source) break;
-          blocks.push(...source.blocks);
-          if (sourceOffset + source.limit >= source.totalBlocks) break;
-          sourceOffset += source.limit;
-        }
-        const byOrdinal = new Map(blocks.map((block) => [block.ordinal, block]));
-        setSegments(
-          blocks.flatMap((block) => {
-            const pair = block.pairedOrdinal === null ? null : byOrdinal.get(block.pairedOrdinal);
-            if (block.scriptKind === 'chinese' && pair?.scriptKind === 'japanese') return [];
-            return [
-              {
-                segmentId: block.blockId,
-                chapterId: chapter.chapterId,
-                chapterOrdinal: chapter.ordinal,
-                segmentOrdinal: block.ordinal,
-                sourceText: block.sourceText,
-                originalTranslation:
-                  pair?.scriptKind === 'chinese'
-                    ? pair.sourceText
-                    : block.scriptKind === 'chinese'
-                    ? block.sourceText
-                    : null,
-                selectedTranslation: block.draftText,
-                status: 'pending' as const,
-                versionCount: block.draftText ? 1 : 0,
-                openReviewCount: 0,
-              },
-            ];
-          }),
-        );
-      }
-      await projects?.saveReadingPosition(project.project.projectId, chapter.chapterId, 1);
-    } finally {
-      setLoading(false);
-    }
-  }, [chapter, project, projects, workflow]);
-
+  // Load segments for current chapter
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (!project || !chapter || !workflow) return;
+    let isMounted = true;
 
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if ((event.target as HTMLElement)?.matches('input,textarea,select,button')) return;
-      if (event.key === 'ArrowLeft') setChapterIndex((value) => Math.max(0, value - 1));
-      if (event.key === 'ArrowRight') setChapterIndex((value) => Math.min(chapters.length - 1, value + 1));
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [chapters.length]);
-
-  const rendered = useMemo(
-    () =>
-      segments.map((segment) => {
-        const finalText = segment.selectedTranslation ?? segment.originalTranslation;
-        if (preferences.mode === 'source') return [{ kind: 'jp', text: segment.sourceText }];
-        if (preferences.mode === 'original')
-          return [{ kind: 'cn', text: segment.originalTranslation ?? '〔此段无既有中文〕' }];
-        if (preferences.mode === 'final')
-          return [{ kind: 'cn', text: finalText ?? '〔此段尚无润色成稿〕' }];
-        return [
-          { kind: 'jp', text: segment.sourceText },
-          { kind: 'cn', text: finalText ?? '〔此段尚无润色成稿〕' },
-        ];
-      }),
-    [preferences.mode, segments],
-  );
-
-  // Generate clean logical TOC from chapters
-  const logicalToc = useMemo(() => {
-    const map = new Map<string, { title: string; targetIndex: number; chapterIds: Set<string>; maxChars: number }>();
-    chapters.forEach((chap, idx) => {
-      const cleanTitle = chap.title
-        .replace(/\s*\((?:扉页|插图|第\s*\d+\s*节|封面|版块\s*\d+)\)\s*$/u, '')
-        .trim();
-      const existing = map.get(cleanTitle);
-      if (!existing) {
-        map.set(cleanTitle, {
-          title: cleanTitle,
-          targetIndex: idx,
-          chapterIds: new Set([chap.chapterId]),
-          maxChars: chap.characterCount || 0,
-        });
-      } else {
-        existing.chapterIds.add(chap.chapterId);
-        if ((chap.characterCount || 0) > existing.maxChars) {
-          existing.maxChars = chap.characterCount || 0;
-          existing.targetIndex = idx;
-        }
+    void workflow.workbench(project.project.projectId, chapter.chapterId, 0, 1000).then((page) => {
+      if (isMounted) {
+        setSegments(page.segments);
       }
     });
-    return Array.from(map.values());
-  }, [chapters]);
 
-  const hasLogicalToc = logicalToc.length > 0 && logicalToc.length < chapters.length;
-  const [useXhtmlMode, setUseXhtmlMode] = useState(false);
+    // Save reading position
+    if (projects?.saveReadingPosition) {
+      void projects.saveReadingPosition(project.project.projectId, chapter.chapterId, 1);
+    }
 
-  if (!project || !chapter) return null;
+    return () => {
+      isMounted = false;
+    };
+  }, [project, chapter, workflow, projects]);
+
+  // Calibre Reader Hook
+  const {
+    chapterHtml,
+    loading: chapterLoading,
+    gallery,
+    lightboxImage,
+    setLightboxImage,
+    iframeRef,
+  } = useCalibreReader(project, chapter, segments, preferences);
+
+  // Filtered TOC Chapters
+  const filteredChapters = useMemo(() => {
+    const q = tocSearch.trim().toLowerCase();
+    if (!q) return chapters;
+    return chapters.filter(
+      (c) => c.title.toLowerCase().includes(q) || String(c.ordinal).includes(q),
+    );
+  }, [chapters, tocSearch]);
+
+  // Word count & Reading stats
+  const chapterWordCount = useMemo(() => {
+    return segments.reduce((sum, seg) => sum + (seg.selectedTranslation || seg.sourceText).length, 0);
+  }, [segments]);
+
+  const estimatedReadingMinutes = Math.max(1, Math.round(chapterWordCount / 350));
+
+  // Toggle Fullscreen
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      void document.documentElement.requestFullscreen();
+      setIsFullscreen(true);
+    } else {
+      void document.exitFullscreen();
+      setIsFullscreen(false);
+    }
+  }, []);
 
   return (
-    <div
-      className={`reader-page reader-theme-${preferences.theme}`}
-      style={
-        {
-          '--reader-font': `${preferences.fontSize}px`,
-          '--reader-width': `${preferences.width}px`,
-          '--reader-brightness': `${preferences.brightness}%`,
-        } as React.CSSProperties
-      }
-    >
-      <aside className="reader-toc">
-        <header>
-          <BookOpen size={18} />
-          <strong title={project.project.title}>{project.project.title}</strong>
-          {hasLogicalToc && (
-            <button
-              type="button"
-              className="reader-toc-toggle"
-              onClick={() => setUseXhtmlMode(!useXhtmlMode)}
-              title={useXhtmlMode ? '切换为书内逻辑目录' : '切换为 XHTML 物理分卷'}
-            >
-              {useXhtmlMode ? 'XHTML' : '书内目录'}
-            </button>
-          )}
-        </header>
-        <nav>
-          {hasLogicalToc && !useXhtmlMode
-            ? logicalToc.map((item) => {
-                const isActive = item.chapterIds.has(chapter.chapterId);
-                return (
-                  <button
-                    type="button"
-                    key={item.title}
-                    className={isActive ? 'active' : ''}
-                    onClick={() => setChapterIndex(item.targetIndex)}
-                  >
-                    <span className="toc-title">{item.title}</span>
-                  </button>
-                );
-              })
-            : chapters.map((item, index) => (
-                <button
-                  type="button"
-                  key={item.chapterId}
-                  className={index === chapterIndex ? 'active' : ''}
-                  onClick={() => setChapterIndex(index)}
-                >
-                  <span className="toc-title">{item.title}</span>
-                </button>
-              ))}
-        </nav>
-      </aside>
+    <div className={`calibre-reader-app theme-${preferences.theme}`}>
+      {/* 1. Top Calibre Navigation Toolbar */}
+      <header className="calibre-toolbar">
+        <div className="calibre-toolbar-left">
+          <button
+            type="button"
+            className={`toolbar-btn ${sidebarOpen ? 'active' : ''}`}
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            title={sidebarOpen ? '收起侧边栏' : '展开侧边栏'}
+          >
+            {sidebarOpen ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
+          </button>
 
-      <main>
-        <header className="reader-toolbar">
-          <div className="reader-modes">
-            <button
-              type="button"
-              className={preferences.mode === 'final' ? 'active' : ''}
-              onClick={() => setPreferences({ ...preferences, mode: 'final' })}
-            >
-              <Sparkles size={14} /> {isBilingual ? '润色成稿' : '精译成稿'}
-            </button>
-            <button
-              type="button"
-              className={preferences.mode === 'bilingual' ? 'active' : ''}
-              onClick={() => setPreferences({ ...preferences, mode: 'bilingual' })}
-            >
-              <Columns2 size={14} /> 日中对照
-            </button>
-            <button
-              type="button"
-              className={preferences.mode === 'source' ? 'active' : ''}
-              onClick={() => setPreferences({ ...preferences, mode: 'source' })}
-            >
-              日文原文
-            </button>
-            {isBilingual && (
+          <div className="toolbar-book-title" title={project?.project.title}>
+            <BookOpen size={15} className="book-icon" />
+            <span>{project?.project.title || '北宇治沉浸阅读器'}</span>
+          </div>
+        </div>
+
+        <div className="calibre-toolbar-center">
+          {/* 4 View Modes Segmented Control */}
+          <div className="reader-mode-segmented">
+            {(['final', 'bilingual', 'source', 'original'] as const).map((m) => {
+              const info = modeLabels[m];
+              const Icon = info.icon;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  className={`mode-tab-btn ${preferences.mode === m ? 'active' : ''}`}
+                  onClick={() => setPreferences((p) => ({ ...p, mode: m }))}
+                  title={info.tip}
+                >
+                  <Icon size={14} />
+                  <span>{info.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="calibre-toolbar-right">
+          {/* Theme Quick Switcher */}
+          <div className="theme-quick-pills">
+            {(['ivory', 'white', 'sepia', 'dark', 'oled'] as const).map((t) => (
               <button
+                key={t}
                 type="button"
-                className={preferences.mode === 'original' ? 'active' : ''}
-                onClick={() => setPreferences({ ...preferences, mode: 'original' })}
-              >
-                <FileText size={14} /> 原译参考
-              </button>
+                className={`theme-dot-btn ${preferences.theme === t ? 'active' : ''}`}
+                style={{ backgroundColor: themeLabels[t].color }}
+                onClick={() => setPreferences((p) => ({ ...p, theme: t }))}
+                title={themeLabels[t].label}
+              />
+            ))}
+          </div>
+
+          {/* Typography Settings Button */}
+          <div className="settings-popover-anchor">
+            <button
+              type="button"
+              className={`toolbar-btn ${settingsOpen ? 'active' : ''}`}
+              onClick={() => setSettingsOpen(!settingsOpen)}
+              title="排版与字体设置"
+            >
+              <Type size={17} />
+            </button>
+
+            {/* Typography Floating Popover */}
+            {settingsOpen && (
+              <div className="calibre-settings-popover">
+                <div className="popover-header">
+                  <h4>出版级排版定制</h4>
+                  <button type="button" onClick={() => setSettingsOpen(false)}>
+                    <X size={14} />
+                  </button>
+                </div>
+
+                <div className="popover-body">
+                  {/* Font Family */}
+                  <div className="setting-control-row">
+                    <span>正文字体</span>
+                    <div className="font-family-pills">
+                      <button
+                        type="button"
+                        className={preferences.fontFamily === 'serif' ? 'active' : ''}
+                        onClick={() => setPreferences((p) => ({ ...p, fontFamily: 'serif' }))}
+                      >
+                        宋体/明朝
+                      </button>
+                      <button
+                        type="button"
+                        className={preferences.fontFamily === 'sans' ? 'active' : ''}
+                        onClick={() => setPreferences((p) => ({ ...p, fontFamily: 'sans' }))}
+                      >
+                        黑体
+                      </button>
+                      <button
+                        type="button"
+                        className={preferences.fontFamily === 'kaiti' ? 'active' : ''}
+                        onClick={() => setPreferences((p) => ({ ...p, fontFamily: 'kaiti' }))}
+                      >
+                        楷体
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Font Size Stepper */}
+                  <div className="setting-control-row">
+                    <span>字号大小</span>
+                    <div className="control-stepper">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPreferences((p) => ({ ...p, fontSize: Math.max(12, p.fontSize - 1) }))
+                        }
+                      >
+                        <Minus size={13} />
+                      </button>
+                      <strong>{preferences.fontSize} px</strong>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPreferences((p) => ({ ...p, fontSize: Math.min(36, p.fontSize + 1) }))
+                        }
+                      >
+                        <Plus size={13} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Line Height Stepper */}
+                  <div className="setting-control-row">
+                    <span>正文行距</span>
+                    <div className="control-stepper">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPreferences((p) => ({
+                            ...p,
+                            lineHeight: Number(Math.max(1.4, p.lineHeight - 0.1).toFixed(2)),
+                          }))
+                        }
+                      >
+                        <Minus size={13} />
+                      </button>
+                      <strong>{preferences.lineHeight.toFixed(1)}x</strong>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPreferences((p) => ({
+                            ...p,
+                            lineHeight: Number(Math.min(2.8, p.lineHeight + 0.1).toFixed(2)),
+                          }))
+                        }
+                      >
+                        <Plus size={13} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Column Width */}
+                  <div className="setting-control-row">
+                    <span>版芯宽度</span>
+                    <div className="width-slider-wrap">
+                      <input
+                        type="range"
+                        min="600"
+                        max="1300"
+                        step="20"
+                        value={preferences.width}
+                        onChange={(e) =>
+                          setPreferences((p) => ({ ...p, width: Number(e.target.value) }))
+                        }
+                      />
+                      <small>{preferences.width}px</small>
+                    </div>
+                  </div>
+
+                  {/* First-line Indent */}
+                  <div className="setting-control-row">
+                    <span>首行缩进 (2字符)</span>
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={preferences.indent}
+                        onChange={(e) => setPreferences((p) => ({ ...p, indent: e.target.checked }))}
+                      />
+                      <span className="slider" />
+                    </label>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
 
-          <div className="reader-controls">
-            <select
-              aria-label="阅读配色主题"
-              value={preferences.theme}
-              onChange={(event) =>
-                setPreferences({ ...preferences, theme: event.target.value as ReaderTheme })
-              }
-            >
-              <option value="paper">纸白 (日间)</option>
-              <option value="sepia">羊皮纸 (护眼)</option>
-              <option value="gray">柔灰 (沉浸)</option>
-              <option value="dark">暗夜 (夜间)</option>
-            </select>
+          {/* Fullscreen Button */}
+          <button
+            type="button"
+            className="toolbar-btn"
+            onClick={toggleFullscreen}
+            title={isFullscreen ? '退出全屏' : '全屏阅读 (F11)'}
+          >
+            {isFullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+          </button>
+        </div>
+      </header>
 
-            <div className="reader-range-group">
-              <label className="reader-range">
-                <span>版宽</span>
-                <input
-                  aria-label="正文版面宽度"
-                  type="range"
-                  min="560"
-                  max="1100"
-                  step="20"
-                  value={preferences.width}
-                  onChange={(event) =>
-                    setPreferences({ ...preferences, width: Number(event.target.value) })
-                  }
-                />
-              </label>
-
-              <label className="reader-range">
-                <span>亮度</span>
-                <input
-                  aria-label="阅读亮度"
-                  type="range"
-                  min="70"
-                  max="110"
-                  step="5"
-                  value={preferences.brightness}
-                  onChange={(event) =>
-                    setPreferences({ ...preferences, brightness: Number(event.target.value) })
-                  }
-                />
-              </label>
-            </div>
-
-            <div className="reader-font-controls">
+      {/* 2. Main Reader Body (Sidebar + Content View) */}
+      <div className="calibre-reader-layout">
+        {/* Left Calibre Sidebar */}
+        {sidebarOpen && (
+          <aside className="calibre-sidebar">
+            {/* Sidebar Tabs */}
+            <div className="sidebar-tabs-bar">
               <button
                 type="button"
-                aria-label="缩小字号"
-                onClick={() =>
-                  setPreferences({ ...preferences, fontSize: Math.max(14, preferences.fontSize - 1) })
-                }
+                className={`sidebar-tab-btn ${sidebarTab === 'toc' ? 'active' : ''}`}
+                onClick={() => setSidebarTab('toc')}
+                title="全书目录"
               >
-                <Minus size={14} />
+                <List size={15} />
+                <span>目录 ({chapters.length})</span>
               </button>
-              <span className="font-size-val">{preferences.fontSize}px</span>
+
               <button
                 type="button"
-                aria-label="放大字号"
-                onClick={() =>
-                  setPreferences({ ...preferences, fontSize: Math.min(32, preferences.fontSize + 1) })
-                }
+                className={`sidebar-tab-btn ${sidebarTab === 'gallery' ? 'active' : ''}`}
+                onClick={() => setSidebarTab('gallery')}
+                title="插画画廊"
               >
-                <Plus size={14} />
+                <ImageIcon size={15} />
+                <span>插画 ({gallery.length})</span>
+              </button>
+
+              <button
+                type="button"
+                className={`sidebar-tab-btn ${sidebarTab === 'stats' ? 'active' : ''}`}
+                onClick={() => setSidebarTab('stats')}
+                title="阅读数据"
+              >
+                <Sliders size={15} />
+                <span>统计</span>
               </button>
             </div>
-          </div>
-        </header>
 
-        <article className="reader-paper">
-          <header>
-            <p className="chapter-meta">第 {chapter.ordinal} 章</p>
-            <h1>{chapter.title}</h1>
-            <span className="mode-indicator">
-              <Languages size={14} />
-              {preferences.mode === 'bilingual'
-                ? '日中双语对照阅读'
-                : preferences.mode === 'source'
-                ? '日文原版阅读'
-                : preferences.mode === 'original'
-                ? '参考原译阅读'
-                : isBilingual
-                ? '润色成稿阅读'
-                : '精译成稿阅读'}
-            </span>
-          </header>
+            {/* Tab 1: TOC List */}
+            {sidebarTab === 'toc' && (
+              <div className="sidebar-tab-content toc-tab">
+                <div className="toc-search-box">
+                  <Search size={13} />
+                  <input
+                    value={tocSearch}
+                    onChange={(e) => setTocSearch(e.target.value)}
+                    placeholder="搜索章节标题…"
+                  />
+                </div>
 
-          {loading ? (
-            <div className="reader-loading">
-              <p>正在排版章节正文…</p>
-            </div>
-          ) : rendered.length === 0 ? (
-            <div className="reader-loading">
-              <p>此项为插图、扉页或排版结构，无文字段落。</p>
+                <div className="toc-items-list">
+                  {filteredChapters.map((c) => {
+                    const isCurrent = c.chapterId === chapter?.chapterId;
+                    return (
+                      <button
+                        key={c.chapterId}
+                        type="button"
+                        className={`toc-chapter-item ${isCurrent ? 'active' : ''}`}
+                        onClick={() => {
+                          const idx = chapters.findIndex((ch) => ch.chapterId === c.chapterId);
+                          if (idx >= 0) setChapterIndex(idx);
+                        }}
+                      >
+                        <div className="toc-ordinal-tag">{c.ordinal}</div>
+                        <div className="toc-title-text">{c.title}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Tab 2: Illustration Gallery */}
+            {sidebarTab === 'gallery' && (
+              <div className="sidebar-tab-content gallery-tab">
+                {gallery.length ? (
+                  <div className="gallery-grid">
+                    {gallery.map((img) => (
+                      <div
+                        key={img.id}
+                        className="gallery-thumb-card"
+                        onClick={() => setLightboxImage(img.dataUrl)}
+                        title="点击全屏查看原图"
+                      >
+                        <img src={img.dataUrl} alt={img.title} />
+                        <span className="gallery-thumb-title">{img.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="sidebar-empty-state">
+                    <ImageIcon size={32} />
+                    <p>当前作品未内嵌独立插画或正在解析中。</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 3: Reading Stats */}
+            {sidebarTab === 'stats' && (
+              <div className="sidebar-tab-content stats-tab">
+                <div className="stats-card">
+                  <span className="stats-label">当前章节</span>
+                  <strong>{chapter?.title}</strong>
+                  <div className="stats-metric-row">
+                    <div>
+                      <small>字数规模</small>
+                      <b>{chapterWordCount.toLocaleString()} 字</b>
+                    </div>
+                    <div>
+                      <small>预估阅读时间</small>
+                      <b>{estimatedReadingMinutes} 分钟</b>
+                    </div>
+                  </div>
+                  <div className="stats-metric-row">
+                    <div>
+                      <small>全书进度</small>
+                      <b>
+                        {chapterIndex + 1} / {chapters.length} 章
+                      </b>
+                    </div>
+                    <div>
+                      <small>段落数</small>
+                      <b>{segments.length} 段</b>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </aside>
+        )}
+
+        {/* Center Reading Container (Iframe Sandboxed) */}
+        <main className="calibre-reading-container">
+          {chapterLoading ? (
+            <div className="reader-loading-card">
+              <div className="reader-spinner" />
+              <p>正在高保真渲染章节排版与原图插画…</p>
             </div>
           ) : (
-            <div className="reader-body">
-              {rendered.map((group, index) => (
-                <section key={segments[index]?.segmentId ?? index}>
-                  {group.map((line, lineIndex) => (
-                    <p
-                      key={lineIndex}
-                      className={line.kind}
-                      lang={line.kind === 'jp' ? 'ja' : 'zh-CN'}
-                    >
-                      {line.text}
-                    </p>
-                  ))}
-                </section>
-              ))}
-            </div>
+            <iframe
+              ref={iframeRef}
+              srcDoc={chapterHtml}
+              className="calibre-render-frame"
+              title="Calibre Reading Frame"
+              sandbox="allow-scripts allow-same-origin"
+            />
           )}
 
-          <footer>
+          {/* Bottom Floating Navigation HUD */}
+          <footer className="calibre-bottom-hud">
             <button
               type="button"
-              disabled={chapterIndex === 0}
-              onClick={() => setChapterIndex(chapterIndex - 1)}
+              className="hud-nav-btn"
+              disabled={chapterIndex <= 0}
+              onClick={() => setChapterIndex((i) => Math.max(0, i - 1))}
             >
-              <ChevronLeft size={16} /> 上一章
+              <ChevronLeft size={16} />
+              <span>上一章</span>
             </button>
-            <span>
-              第 {chapterIndex + 1} 章 / 共 {chapters.length} 章
-            </span>
+
+            <div className="hud-center-info">
+              <span className="hud-chapter-name">{chapter?.title}</span>
+              <div className="hud-slider-wrap">
+                <input
+                  type="range"
+                  min="0"
+                  max={Math.max(0, chapters.length - 1)}
+                  value={chapterIndex}
+                  onChange={(e) => setChapterIndex(Number(e.target.value))}
+                />
+                <span className="hud-progress-text">
+                  第 {chapterIndex + 1} / {chapters.length} 章 (
+                  {chapters.length > 0 ? Math.round(((chapterIndex + 1) / chapters.length) * 100) : 0}
+                  %)
+                </span>
+              </div>
+            </div>
+
             <button
               type="button"
-              disabled={chapterIndex + 1 >= chapters.length}
-              onClick={() => setChapterIndex(chapterIndex + 1)}
+              className="hud-nav-btn"
+              disabled={chapterIndex >= chapters.length - 1}
+              onClick={() => setChapterIndex((i) => Math.min(chapters.length - 1, i + 1))}
             >
-              下一章 <ChevronRight size={16} />
+              <span>下一章</span>
+              <ChevronRight size={16} />
             </button>
           </footer>
-        </article>
-      </main>
+        </main>
+      </div>
+
+      {/* 3. Illustration Fullscreen Lightbox Modal */}
+      {lightboxImage && (
+        <div className="calibre-lightbox-backdrop" onClick={() => setLightboxImage(null)}>
+          <div className="lightbox-content-box" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="lightbox-close-btn"
+              onClick={() => setLightboxImage(null)}
+            >
+              <X size={20} />
+            </button>
+            <img src={lightboxImage} alt="全屏插画原图" className="lightbox-full-img" />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-

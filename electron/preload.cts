@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('kitaujiDesktop', {
       ipcRenderer.invoke('projects:save-block-draft', projectId, blockId, draftText),
     saveReadingPosition: (projectId: string, chapterId: string, blockOrdinal: number) =>
       ipcRenderer.invoke('projects:save-reading-position', projectId, chapterId, blockOrdinal),
+    readSourceFile: (projectId: string) => ipcRenderer.invoke('projects:read-source-file', projectId),
     exportEpub: (projectId: string) => ipcRenderer.invoke('projects:export-epub', projectId),
   }),
   storage: Object.freeze({

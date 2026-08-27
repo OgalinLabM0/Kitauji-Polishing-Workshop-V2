@@ -83,6 +83,13 @@ export class ProjectService {
     return content;
   }
 
+  readSourceFile(projectId: string): string | null {
+    if (!projectIdPattern.test(projectId)) return null;
+    const bytes = this.#database.readOriginalSource(projectId);
+    if (!bytes) return null;
+    return Buffer.from(bytes).toString('base64');
+  }
+
   saveReadingPosition(projectId: string, chapterId: string, blockOrdinal: number) {
     if (!projectIdPattern.test(projectId) || !chapterIdPattern.test(chapterId)) return false;
     if (!Number.isSafeInteger(blockOrdinal) || blockOrdinal < 1) return false;

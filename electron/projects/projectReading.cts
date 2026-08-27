@@ -23,6 +23,7 @@ interface ChapterIdentityRow {
 interface EpubBlockRow {
   readonly block_id: string;
   readonly ordinal: number;
+  readonly dom_path?: string;
   readonly source_line: number | null;
   readonly tag_name: string;
   readonly language: string | null;
@@ -90,7 +91,7 @@ export const readProjectChapter = (
   let blocks: readonly ChapterContentBlock[];
   if (chapter.source_format === 'epub') {
     const rows = database.prepare(`
-      SELECT b.block_id, b.ordinal, b.source_line, b.tag_name, b.language, b.script_kind,
+      SELECT b.block_id, b.ordinal, b.dom_path, b.source_line, b.tag_name, b.language, b.script_kind,
         b.source_text, b.source_xml, b.style_hint, b.paired_ordinal, d.draft_text
       FROM epub_text_blocks b
       LEFT JOIN epub_block_drafts d ON d.block_id = b.block_id
@@ -100,6 +101,7 @@ export const readProjectChapter = (
     blocks = rows.map((row) => ({
       blockId: row.block_id,
       ordinal: row.ordinal,
+      domPath: row.dom_path,
       sourceLine: row.source_line,
       tagName: row.tag_name,
       language: row.language,

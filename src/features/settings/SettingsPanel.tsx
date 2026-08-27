@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import {
   Check,
+  Cpu,
   Database,
   Download,
   FolderInput,
   FolderOutput,
   HardDrive,
-  Cpu,
   Minus,
   Monitor,
   Plus,
@@ -24,8 +24,8 @@ import {
 } from '../../core/settings/displaySettings';
 import type { StorageDirectoryKind } from '../../core/storage/models';
 import { useStorageSettings } from './useStorageSettings';
-import '../../styles/settings.css';
 import { ProviderSettings } from './ProviderSettings';
+import '../../styles/settings.css';
 
 interface SettingsPanelProps {
   readonly settings: DisplaySettings;
@@ -43,126 +43,317 @@ const formatBytes = (bytes: number) => {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GiB`;
 };
 
-interface DirectoryRowProps {
-  readonly kind: StorageDirectoryKind;
-  readonly title: string;
-  readonly description: string;
-  readonly path: string | null;
-  readonly icon: typeof FolderInput;
-  readonly busy: boolean;
-  readonly onChoose: () => void;
-  readonly onReset: () => void;
-  readonly resetLabel?: string;
-  readonly showReset?: boolean;
-}
-
-const DirectoryRow = ({ kind, title, description, path, icon: Icon, busy, onChoose, onReset, resetLabel = '取消固定', showReset = Boolean(path) }: DirectoryRowProps) => (
-  <section className="storage-row">
-    <Icon size={19} />
-    <div className="storage-row-copy">
-      <h3>{title}</h3><p>{description}</p>
-      <code>{path ?? (kind === 'books' ? '未固定；打开文件窗口时使用系统位置' : '未固定；默认跟随原书所在目录')}</code>
-    </div>
-    <div className="storage-row-actions">
-      <button type="button" disabled={busy} onClick={onChoose}>{busy ? '处理中…' : '选择位置'}</button>
-      {showReset && <button type="button" className="link-action" disabled={busy} onClick={onReset}>{resetLabel}</button>}
-    </div>
-  </section>
-);
-
 export const SettingsPanel = ({ settings, onTextScaleChange, onReset }: SettingsPanelProps) => {
-  const [page, setPage] = useState<SettingsPage>(() => (
-    new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('panel') === 'storage'
-      ? 'storage'
-      : new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('panel') === 'providers' ? 'providers' : 'display'
-  ));
+  const [page, setPage] = useState<SettingsPage>(() => {
+    const p = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('panel');
+    return p === 'storage' ? 'storage' : p === 'providers' ? 'providers' : 'display';
+  });
+
   const storage = useStorageSettings();
   const info = storage.info;
 
   return (
     <div className="settings-workspace">
+      {/* 1. Sidebar Navigation */}
       <aside className="settings-index" aria-label="设置分类">
-        <p className="eyebrow">应用设置</p>
-        <h1>设置</h1>
-        <button type="button" className={page === 'display' ? 'active' : ''} onClick={() => setPage('display')}><Type size={16} /><span><strong>显示与排版</strong><small>字号、窗口与阅读密度</small></span></button>
-        <button type="button" className={page === 'storage' ? 'active' : ''} onClick={() => setPage('storage')}><HardDrive size={16} /><span><strong>文件与缓存</strong><small>目录、容量与清理</small></span></button>
-        <button type="button" className={page === 'providers' ? 'active' : ''} onClick={() => setPage('providers')}><Cpu size={16} /><span><strong>模型与接口</strong><small>服务地址、模型与密钥</small></span></button>
+        <div className="settings-index-head">
+          <p className="eyebrow">应用设置</p>
+          <h1>偏好设置</h1>
+        </div>
+
+        <nav className="settings-nav-list">
+          <button
+            type="button"
+            className={`settings-nav-btn ${page === 'display' ? 'active' : ''}`}
+            onClick={() => setPage('display')}
+          >
+            <Type size={16} />
+            <div>
+              <strong>显示与排版</strong>
+              <small>字号缩放与工作页密度</small>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            className={`settings-nav-btn ${page === 'storage' ? 'active' : ''}`}
+            onClick={() => setPage('storage')}
+          >
+            <HardDrive size={16} />
+            <div>
+              <strong>文件与缓存</strong>
+              <small>目录路径、正文缓存与整库备份</small>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            className={`settings-nav-btn ${page === 'providers' ? 'active' : ''}`}
+            onClick={() => setPage('providers')}
+          >
+            <Cpu size={16} />
+            <div>
+              <strong>模型与接口</strong>
+              <small>4工位模型矩阵、服务连接与密钥</small>
+            </div>
+          </button>
+        </nav>
       </aside>
 
+      {/* 2. Scrollable Body Area */}
       <div className="settings-scroll">
-        {page === 'providers' ? <ProviderSettings /> : page === 'display' ? (
-          <>
+        {page === 'providers' ? (
+          <ProviderSettings />
+        ) : page === 'display' ? (
+          <div className="settings-page-content">
             <header className="settings-page-head">
-              <div><h1>显示与排版</h1><p>调整整个应用的文字比例；各工作页保留自己的阅读节奏。</p></div>
-              <button type="button" className="quiet-button" onClick={onReset}><RotateCcw size={14} />恢复默认</button>
+              <div>
+                <h1>全局显示与文字排版</h1>
+                <p>调整整个应用的全局文字缩放比例；各小说阅读页保留独立的精细排版偏好。</p>
+              </div>
+              <button type="button" className="quiet-button" onClick={onReset}>
+                <RotateCcw size={14} />
+                <span>恢复默认</span>
+              </button>
             </header>
 
-            <section className="settings-document" aria-labelledby="text-size-title">
-              <header className="settings-document-title">
-                <Type size={19} /><div><h2 id="text-size-title">界面文字</h2><p>立即生效，关闭软件后保留。</p></div><output htmlFor="text-scale">{textScalePercentage(settings.textScale)}</output>
+            <section className="settings-document-card">
+              <header className="card-header">
+                <Type size={18} />
+                <div>
+                  <h2>界面字号缩放</h2>
+                  <p>无损缩放工作区菜单、段落文字与检查器。</p>
+                </div>
+                <strong className="scale-preview-badge">
+                  {textScalePercentage(settings.textScale)}%
+                </strong>
               </header>
 
-              <div className="text-scale-control">
-                <button type="button" aria-label="缩小文字" disabled={settings.textScale <= MIN_TEXT_SCALE} onClick={() => onTextScaleChange(settings.textScale - TEXT_SCALE_STEP)}><Minus size={15} /></button>
-                <input id="text-scale" type="range" min={MIN_TEXT_SCALE} max={MAX_TEXT_SCALE} step={TEXT_SCALE_STEP} value={settings.textScale} aria-valuetext={textScalePercentage(settings.textScale)} onChange={(event) => onTextScaleChange(Number(event.target.value))} />
-                <button type="button" aria-label="放大文字" disabled={settings.textScale >= MAX_TEXT_SCALE} onClick={() => onTextScaleChange(settings.textScale + TEXT_SCALE_STEP)}><Plus size={15} /></button>
-              </div>
+              <div className="scale-adjust-row">
+                <div className="scale-stepper">
+                  <button
+                    type="button"
+                    disabled={settings.textScale <= MIN_TEXT_SCALE}
+                    onClick={() =>
+                      onTextScaleChange(
+                        Math.max(MIN_TEXT_SCALE, Number((settings.textScale - TEXT_SCALE_STEP).toFixed(2))),
+                      )
+                    }
+                  >
+                    <Minus size={14} />
+                  </button>
+                  <span className="scale-display">{textScalePercentage(settings.textScale)}%</span>
+                  <button
+                    type="button"
+                    disabled={settings.textScale >= MAX_TEXT_SCALE}
+                    onClick={() =>
+                      onTextScaleChange(
+                        Math.min(MAX_TEXT_SCALE, Number((settings.textScale + TEXT_SCALE_STEP).toFixed(2))),
+                      )
+                    }
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
 
-              <div className="text-scale-presets" aria-label="常用文字大小">
-                {quickScales.map((scale) => <button type="button" key={scale} className={settings.textScale === scale ? 'active' : ''} onClick={() => onTextScaleChange(scale)}>{settings.textScale === scale && <Check size={12} />}{textScalePercentage(scale)}</button>)}
+                <div className="scale-quick-pills">
+                  {quickScales.map((scale) => (
+                    <button
+                      key={scale}
+                      type="button"
+                      className={`scale-pill ${Math.abs(settings.textScale - scale) < 0.01 ? 'active' : ''}`}
+                      onClick={() => onTextScaleChange(scale)}
+                    >
+                      {textScalePercentage(scale)}%
+                    </button>
+                  ))}
+                </div>
               </div>
-
-              <div className="display-preview" aria-label="文字大小预览">
-                <span>正文预览</span><p lang="ja">「関さん、次のページを見て」</p><p>“关同学，请看下一页。”</p><small>工作台、表单和正文按比例放大；最左侧主导航维持稳定尺度，标题也不会无上限膨胀。</small>
-              </div>
-              <p className="settings-shortcut">快捷键：Ctrl + 加号 / 减号调整，Ctrl + 0 恢复 100%。</p>
             </section>
-
-            <section className="settings-document settings-window-sheet" aria-labelledby="window-layout-title">
-              <header className="settings-document-title"><Monitor size={19} /><div><h2 id="window-layout-title">窗口布局</h2><p>宽屏保留目录和检查器，小窗口改为上下布局或图标轨道。</p></div><span className="settings-state"><Check size={12} />自动</span></header>
-              <dl><div><dt>工作页</dt><dd>书架、编辑、阅读和设置使用不同结构</dd></div><div><dt>长文件名与路径</dt><dd>完整换行，不以省略号隐藏</dd></div><div><dt>最小窗口</dt><dd>720 × 600</dd></div></dl>
-            </section>
-          </>
+          </div>
         ) : (
-          <>
+          /* File & Storage Tab */
+          <div className="settings-page-content">
             <header className="settings-page-head">
-              <div><h1>文件与缓存</h1><p>控制文件窗口默认位置与派生缓存。原书和项目数据不会被缓存清理删除。</p></div>
+              <div>
+                <h1>文件存储与数据缓存</h1>
+                <p>管理书籍导入起点、章节高速重建缓存与 SQLite 项目整库备份迁移。</p>
+              </div>
             </header>
 
-            {storage.error && <p className="storage-feedback storage-feedback--error">{storage.error}</p>}
-            {storage.notice && <p className="storage-feedback storage-feedback--success">{storage.notice}</p>}
-
-            <section className="settings-document storage-document" aria-labelledby="file-location-title">
-              <header className="settings-document-title"><FolderInput size={19} /><div><h2 id="file-location-title">文件位置</h2><p>这里只改变文件窗口的默认起点，不移动或重命名原书。</p></div></header>
-              <DirectoryRow kind="books" title="默认书籍目录" description="导入 EPUB/TXT 时优先从这里打开。" path={info?.bookDirectory ?? null} icon={FolderInput} busy={storage.busy === 'books'} onChoose={() => void storage.choose('books')} onReset={() => void storage.reset('books')} />
-              <DirectoryRow kind="exports" title="默认导出目录" description="校样和后续成品默认保存到这里。" path={info?.exportDirectory ?? null} icon={FolderOutput} busy={storage.busy === 'exports'} onChoose={() => void storage.choose('exports')} onReset={() => void storage.reset('exports')} />
-            </section>
-
-            <section className="settings-document storage-document" aria-labelledby="cache-title">
-              <header className="settings-document-title"><HardDrive size={19} /><div><h2 id="cache-title">正文缓存</h2><p>章节分页读取后保存为可重建缓存，加快来回切章；保存校改、删除项目时会自动失效。</p></div><strong className="storage-size">{info ? formatBytes(info.cacheSizeBytes) : '—'}</strong></header>
-              <section className="storage-row storage-row--cache">
-                <HardDrive size={19} />
-                <div className="storage-row-copy"><h3>缓存目录</h3><p>{info ? `${info.cacheFileCount.toLocaleString()} 个派生文件` : storage.loading ? '正在统计…' : '桌面程序不可用'}</p><code>{info?.cacheDirectory ?? '—'}</code></div>
-                <div className="storage-row-actions"><button type="button" disabled={!storage.available || Boolean(storage.busy)} onClick={() => void storage.choose('cache')}>{storage.busy === 'cache' ? '处理中…' : '更换位置'}</button>{info?.customCacheDirectory && <button type="button" className="link-action" disabled={Boolean(storage.busy)} onClick={() => void storage.reset('cache')}>恢复默认</button>}</div>
-              </section>
-              <div className="cache-clear-line"><p><strong>清理缓存不会删除</strong>原 EPUB/TXT、SQLite 项目、校改草稿、术语或阅读进度。</p><button type="button" disabled={!storage.available || Boolean(storage.busy) || !info || info.cacheFileCount === 0} onClick={() => void storage.clearCache()}><Trash2 size={14} />{storage.busy === 'clear' ? '清理中…' : '清理缓存'}</button></div>
-            </section>
-
-            <section className="settings-document database-location" aria-labelledby="database-title">
-              <header className="settings-document-title"><Database size={19} /><div><h2 id="database-title">项目数据库</h2><p>保存原书副本、术语、长期记忆、译文版本、任务、复核与阅读位置。</p></div><strong className="storage-size">{info ? formatBytes(info.databaseSizeBytes) : '—'}</strong></header>
-              <DirectoryRow kind="database" title="当前数据库" description="可以迁移到 D 盘或其他固定目录。迁移会在重启时完成，原库保持可用直到新库通过校验。" path={info?.databasePath ?? null} icon={Database} busy={storage.busy === 'database'} onChoose={() => void storage.choose('database')} onReset={() => void storage.reset('database')} resetLabel={info?.pendingDatabasePath && !info.customDatabaseDirectory ? '取消待迁移位置' : '迁回系统默认'} showReset={Boolean(info?.customDatabaseDirectory || info?.pendingDatabasePath)} />
-              <div className="database-backup-actions">
-                <div><strong>整库备份与恢复</strong><p>备份包含原书、术语、长期记忆、译文、任务断点、复核和阅读进度；不包含 API Key。</p></div>
-                <div><button type="button" disabled={!storage.available || Boolean(storage.busy)} onClick={() => void storage.backupDatabase()}><Download size={14} />{storage.busy === 'backup' ? '正在校验备份…' : '导出整库备份'}</button><button type="button" disabled={!storage.available || Boolean(storage.busy)} onClick={() => void storage.restoreDatabase()}><Upload size={14} />{storage.busy === 'restore' ? '正在校验…' : '从备份恢复'}</button></div>
+            {storage.error && (
+              <div className="settings-alert-box alert-error">
+                <span>{storage.error}</span>
               </div>
-              {info?.pendingDatabasePath && <div className="database-pending"><div><strong>等待重启迁移</strong><code>{info.pendingDatabasePath}</code><p>重启后先复制完整数据库，再核对完整性、schema 版本和项目数量；全部一致才切换并移除原位置文件。</p></div><button type="button" disabled={Boolean(storage.busy)} onClick={() => void storage.restartForDatabaseMove()}>{storage.busy === 'restart' ? '正在重启…' : '立即重启并迁移'}</button></div>}
-              {info?.pendingDatabaseRestore && <div className="database-pending"><div><strong>等待重启恢复整库</strong><code>{info.pendingRestoreSourceName}</code><p>重启后会先为当前数据库建立完整安全副本，再安装并复验所选备份；恢复失败时继续使用当前库。</p></div><button type="button" disabled={Boolean(storage.busy)} onClick={() => void storage.restartForDatabaseMove()}>{storage.busy === 'restart' ? '正在重启…' : '立即重启并恢复'}</button></div>}
-              {info?.databaseMoveError && <p className="database-move-error"><strong>上次迁移没有完成：</strong>{info.databaseMoveError}<br />软件仍在使用上方显示的原数据库，请选择另一个空目录后重试。</p>}
-              {info?.databaseRestoreError && <p className="database-move-error"><strong>上次恢复没有完成：</strong>{info.databaseRestoreError}<br />软件仍在使用恢复前的数据库。</p>}
-              {info?.lastSafetyBackupPath && <p>最近一次恢复前安全副本：<code>{info.lastSafetyBackupPath}</code></p>}
-              <p>只有项目数据库移动到自定义位置；用于记住该位置的极小设置文件仍由 Windows 保存在当前用户配置目录。目标目录若已存在同名数据库，软件不会覆盖。</p>
+            )}
+            {storage.notice && (
+              <div className="settings-alert-box alert-success">
+                <span>{storage.notice}</span>
+              </div>
+            )}
+
+            {/* Storage Metric Gauges */}
+            <div className="storage-gauges-grid">
+              <div className="storage-gauge-card">
+                <span className="gauge-label">章节正文缓存</span>
+                <strong className="gauge-value">
+                  {info ? formatBytes(info.cacheSizeBytes) : '—'}
+                </strong>
+                <small className="gauge-desc">
+                  {info ? `${info.cacheFileCount.toLocaleString()} 个派生文件` : '统计中…'}
+                </small>
+              </div>
+
+              <div className="storage-gauge-card">
+                <span className="gauge-label">SQLite 项目数据库</span>
+                <strong className="gauge-value">
+                  {info ? formatBytes(info.databaseSizeBytes) : '—'}
+                </strong>
+                <small className="gauge-desc">保存原书副本、译文版本、记忆与复核</small>
+              </div>
+            </div>
+
+            {/* Card 1: Directories */}
+            <section className="settings-document-card">
+              <header className="card-header">
+                <FolderInput size={18} />
+                <div>
+                  <h2>默认文件交互位置</h2>
+                  <p>设置导入与导出文件选择窗口的默认起始目录，原书文件不会被自动移动。</p>
+                </div>
+              </header>
+
+              <div className="directory-rows-list">
+                <div className="directory-row-item">
+                  <div className="dir-info">
+                    <strong>默认书籍目录</strong>
+                    <p>导入 EPUB / TXT 时优先打开的位置</p>
+                    <code>{info?.bookDirectory ?? '未固定（使用系统最近选择）'}</code>
+                  </div>
+                  <div className="dir-actions">
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      disabled={Boolean(storage.busy)}
+                      onClick={() => void storage.choose('books')}
+                    >
+                      选择目录
+                    </button>
+                    {info?.bookDirectory && (
+                      <button
+                        type="button"
+                        className="danger-quiet-btn"
+                        disabled={Boolean(storage.busy)}
+                        onClick={() => void storage.reset('books')}
+                      >
+                        清除固定
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="directory-row-item">
+                  <div className="dir-info">
+                    <strong>默认成书导出目录</strong>
+                    <p>正式 EPUB 校样与成品默认保存到这里</p>
+                    <code>{info?.exportDirectory ?? '未固定（默认跟随书籍原目录）'}</code>
+                  </div>
+                  <div className="dir-actions">
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      disabled={Boolean(storage.busy)}
+                      onClick={() => void storage.choose('exports')}
+                    >
+                      选择目录
+                    </button>
+                    {info?.exportDirectory && (
+                      <button
+                        type="button"
+                        className="danger-quiet-btn"
+                        disabled={Boolean(storage.busy)}
+                        onClick={() => void storage.reset('exports')}
+                      >
+                        清除固定
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
             </section>
-          </>
+
+            {/* Card 2: Cache Management */}
+            <section className="settings-document-card">
+              <header className="card-header">
+                <HardDrive size={18} />
+                <div>
+                  <h2>章节正文高速缓存</h2>
+                  <p>
+                    分页读取后缓存为高保真只读数据，加快来回切章响应；保存校改与删除项目时自动失效。
+                  </p>
+                </div>
+              </header>
+
+              <div className="cache-management-box">
+                <div className="cache-desc-text">
+                  <p>
+                    <strong>清理缓存绝对安全</strong>：清理操作仅删除本地章节预渲染派生文件，
+                    <strong>
+                      绝不会删除原 EPUB/TXT、SQLite 数据库、已润色译文、术语表或阅读进度
+                    </strong>
+                    。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="danger-quiet-btn"
+                  disabled={!storage.available || Boolean(storage.busy) || !info || info.cacheFileCount === 0}
+                  onClick={() => void storage.clearCache()}
+                >
+                  <Trash2 size={14} />
+                  <span>{storage.busy === 'clear' ? '正在清理…' : '一键安全清理正文缓存'}</span>
+                </button>
+              </div>
+            </section>
+
+            {/* Card 3: Database & Full Backup */}
+            <section className="settings-document-card">
+              <header className="card-header">
+                <Database size={18} />
+                <div>
+                  <h2>项目整库备份与迁移</h2>
+                  <p>备份包含全书原稿、已润色版本流、专名词典、长程叙事记忆与质量复核队列。</p>
+                </div>
+              </header>
+
+              <div className="db-backup-actions-bar">
+                <div className="db-backup-info">
+                  <strong>整库备份导出与恢复 (.sqlite.bak)</strong>
+                  <p>可安全迁移至其他设备，备份文件不包含你的私密 API Key。</p>
+                </div>
+                <div className="db-buttons-row">
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    disabled={!storage.available || Boolean(storage.busy)}
+                    onClick={() => void storage.backupDatabase()}
+                  >
+                    <Download size={14} />
+                    <span>{storage.busy === 'backup' ? '正在导出…' : '导出整库备份'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    disabled={!storage.available || Boolean(storage.busy)}
+                    onClick={() => void storage.restoreDatabase()}
+                  >
+                    <Upload size={14} />
+                    <span>{storage.busy === 'restore' ? '正在恢复…' : '从备份恢复整库'}</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
         )}
       </div>
     </div>

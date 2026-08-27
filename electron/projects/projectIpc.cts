@@ -13,6 +13,7 @@ const PROJECT_CHANNELS = {
   readChapter: 'projects:read-chapter',
   saveBlockDraft: 'projects:save-block-draft',
   saveReadingPosition: 'projects:save-reading-position',
+  readSourceFile: 'projects:read-source-file',
   exportEpub: 'projects:export-epub',
 } as const;
 
@@ -99,6 +100,12 @@ export const registerProjectIpc = (
     assertTrustedSender(event, getMainWindow);
     if (typeof projectId !== 'string' || typeof chapterId !== 'string' || typeof blockOrdinal !== 'number') return false;
     return service.saveReadingPosition(projectId, chapterId, blockOrdinal);
+  });
+
+  ipcMain.handle(PROJECT_CHANNELS.readSourceFile, (event, projectId: unknown) => {
+    assertTrustedSender(event, getMainWindow);
+    if (typeof projectId !== 'string') return null;
+    return service.readSourceFile(projectId);
   });
 
   ipcMain.handle(PROJECT_CHANNELS.exportEpub, async (event, projectId: unknown) => {

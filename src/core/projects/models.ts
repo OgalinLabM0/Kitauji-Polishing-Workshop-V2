@@ -67,6 +67,7 @@ export interface ProjectReadingPosition {
 export interface ChapterContentBlock {
   readonly blockId: string;
   readonly ordinal: number;
+  readonly domPath?: string;
   readonly sourceLine: number | null;
   readonly tagName: string;
   readonly language: string | null;
@@ -129,7 +130,9 @@ export interface ProjectDesktopApi {
   delete(projectId: string): Promise<DeleteProjectResult>;
   clear(): Promise<ClearProjectsResult>;
   readChapter(projectId: string, chapterId: string, offset?: number, limit?: number): Promise<ProjectChapterContent | null>;
+  readSourceFile?(projectId: string): Promise<string | null>;
   saveBlockDraft(projectId: string, blockId: string, draftText: string | null): Promise<SaveBlockDraftResult>;
   saveReadingPosition(projectId: string, chapterId: string, blockOrdinal: number): Promise<boolean>;
   exportEpub(projectId: string): Promise<ExportEpubResult>;
 }
+
