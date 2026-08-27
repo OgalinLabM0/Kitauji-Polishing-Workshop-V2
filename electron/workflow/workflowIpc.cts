@@ -15,6 +15,7 @@ const CHANNELS = {
   exportFinal: 'workflow:export-final', versions: 'workflow:versions', restoreVersion: 'workflow:restore-version',
   getRecentLogs: 'workflow:get-recent-logs', clearLogs: 'workflow:clear-logs',
   runGlossaryAgent: 'workflow:run-glossary-agent',
+  runDomainAgent: 'workflow:run-domain-agent',
   seriesAssignment: 'workflow:series-assignment', listSeries: 'workflow:list-series',
   assignSeries: 'workflow:assign-series', unassignSeries: 'workflow:unassign-series',
   ambiguities: 'workflow:ambiguities', resolveAmbiguity: 'workflow:resolve-ambiguity',
@@ -52,6 +53,11 @@ export const registerWorkflowIpc = (service: WorkflowService, getMainWindow: () 
   ipcMain.handle(CHANNELS.runGlossaryAgent, (event, projectId: unknown, instruction: unknown) => {
     assertTrustedSender(event, getMainWindow);
     return service.runGlossaryAgent(String(projectId), String(instruction));
+  });
+
+  ipcMain.handle(CHANNELS.runDomainAgent, (event, domain: unknown, projectId: unknown, instruction: unknown, options: unknown) => {
+    assertTrustedSender(event, getMainWindow);
+    return service.runDomainAgent(String(domain) as any, String(projectId), String(instruction), options as any);
   });
 
   ipcMain.handle(CHANNELS.overview, (event, projectId: unknown) => {

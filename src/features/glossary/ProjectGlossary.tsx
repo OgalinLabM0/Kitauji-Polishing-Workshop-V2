@@ -15,7 +15,7 @@ import {
 import type { GlossaryRecord } from '../../core/workflow/models';
 import type { GlossaryImportHandling } from './importedGlossaryItems';
 import { GlossaryImportDialog } from './GlossaryImportDialog';
-import { GlossaryAgentDrawer } from './GlossaryAgentDrawer';
+import { DomainAgentDrawer } from '../agent/DomainAgentDrawer';
 import '../../styles/glossary.css';
 
 interface ProjectGlossaryProps {
@@ -508,8 +508,9 @@ export const ProjectGlossary = ({ projectId, projectTitle }: ProjectGlossaryProp
         onClose={() => setImportOpen(false)}
         onImport={(records, handling) => void importRecords(records, handling)}
       />
-      <GlossaryAgentDrawer
+      <DomainAgentDrawer
         projectId={projectId}
+        domain="glossary"
         isOpen={agentOpen}
         onClose={() => setAgentOpen(false)}
         onUpdated={() => void load()}

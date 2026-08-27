@@ -1285,6 +1285,189 @@ export class WorkflowRepository {
     });
   }
 
+  getProjectGlobalContext(projectId: string) {
+    const glossary = this.glossary(projectId);
+    const facts = this.memory(projectId);
+    const reviews = this.reviews(projectId);
+    const ambiguities = this.ambiguities(projectId);
+    const chapters = this.#database.prepare(`
+      SELECT chapter_id, ordinal, title, character_count, paragraph_count FROM chapters
+      WHERE project_id = ? ORDER BY ordinal
+    `).all(projectId) as unknown as Array<{
+      chapter_id: string; ordinal: number; title: string; character_count: number; paragraph_count: number;
+    }>;
+    const styleDecisions = this.#database.prepare(`
+      SELECT style_id, decision_kind, source_pattern, target_strategy, rationale FROM translation_style_memories
+      WHERE project_id = ?
+    `).all(projectId) as unknown as Array<{
+      style_id: string; decision_kind: string; source_pattern: string; target_strategy: string; rationale: string;
+    }>;
+    const entities = this.#database.prepare(`
+      SELECT e.entity_id, e.canonical_source, e.canonical_translation, e.entity_kind, e.gender,
+        group_concat(a.source_form, '||') AS aliases
+      FROM narrative_entities e
+      LEFT JOIN narrative_aliases a ON a.entity_id = e.entity_id
+      WHERE e.project_id = ?
+      GROUP BY e.entity_id
+    `).all(projectId) as unknown as Array<{
+      entity_id: string; canonical_source: string; canonical_translation: string; entity_kind: string; gender: string; aliases: string | null;
+    }>;
+
+    return {
+      glossary,
+      facts,
+      reviews,
+      ambiguities,
+      chapters,
+      styleDecisions,
+      entities: entities.map((e) => ({
+        entityId: e.entity_id,
+        canonicalSource: e.canonical_source,
+        canonicalTranslation: e.canonical_translation,
+        entityKind: e.entity_kind,
+        gender: e.gender,
+        aliases: e.aliases ? e.aliases.split('||').filter(Boolean) : [],
+      })),
+    };
+  }
+
+  updateCharacterRelations(
+    projectId: string,
+    updates: {
+      readonly modifiedCharacters?: readonly {
+        readonly sourceTerm: string;
+        readonly translatedTerm?: string;
+        readonly gender?: string;
+        readonly sense?: string;
+        readonly notes?: string;
+        readonly status?: string;
+        readonly aliases?: readonly string[];
+      }[];
+      readonly newRelationships?: readonly {
+        readonly subject: string;
+        readonly predicate: string;
+        readonly object: string;
+        readonly statement: string;
+        readonly importance?: number;
+      }[];
+    },
+  ) {
+    const timestamp = now();
+    let count = 0;
+    if (updates.modifiedCharacters) {
+      for (const char of updates.modifiedCharacters) {
+        const entry = this.#database.prepare('SELECT glossary_id, translated_term FROM glossary_entries WHERE project_id = ? AND source_term = ?')
+          .get(projectId, char.sourceTerm) as { glossary_id: string; translated_term: string } | undefined;
+        if (entry) {
+          this.updateGlossary(
+            entry.glossary_id,
+            char.translatedTerm ?? entry.translated_term,
+            char.status ?? 'confirmed',
+            char.notes ?? '',
+            '',
+            char.gender,
+          );
+          if (char.sense) {
+            this.#database.prepare('UPDATE glossary_entries SET sense = ?, updated_at = ? WHERE glossary_id = ?')
+              .run(char.sense, timestamp, entry.glossary_id);
+          }
+          count += 1;
+        }
+        if (char.aliases && char.aliases.length > 0) {
+          const entity = this.#database.prepare('SELECT entity_id FROM narrative_entities WHERE project_id = ? AND canonical_source = ?')
+            .get(projectId, char.sourceTerm) as { entity_id: string } | undefined;
+          if (entity) {
+            for (const alias of char.aliases) {
+              this.#database.prepare(`
+                INSERT OR IGNORE INTO narrative_aliases(alias_id, entity_id, project_id, source_form, translated_form, alias_kind, confidence, created_at)
+                VALUES(?, ?, ?, ?, ?, 'alias', 1.0, ?)
+              `).run(`alias-${randomUUID()}`, entity.entity_id, projectId, alias, char.translatedTerm ?? null, timestamp);
+            }
+          }
+        }
+      }
+    }
+    if (updates.newRelationships) {
+      for (const rel of updates.newRelationships) {
+        const factId = `fact-${randomUUID()}`;
+        this.#database.prepare(`
+          INSERT INTO memory_facts(fact_id, project_id, fact_kind, subject_key, object_key,
+            statement, chapter_start, reader_visible_from, evidence_excerpt, confidence, status, memory_class, importance,
+            retention_policy, retrieval_scope, consolidation_status, character_knowledge_json, created_by, created_at, updated_at)
+          VALUES(?, ?, 'relationship', ?, ?, ?, 1, 1, 'AI 关系助理梳理建立', 1.0, 'confirmed', 'relationship', ?, 'stable', 'series', 'consolidated', '{}', 'character-agent', ?, ?)
+        `).run(factId, projectId, rel.subject, rel.object, rel.statement, rel.importance ?? 0.8, timestamp, timestamp);
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  updateMemoryFacts(
+    projectId: string,
+    updates: {
+      readonly modifiedFacts?: readonly {
+        readonly factId: string;
+        readonly statement?: string;
+        readonly importance?: number;
+        readonly status?: string;
+        readonly memoryClass?: string;
+        readonly retrievalScope?: string;
+      }[];
+      readonly archivedFactIds?: readonly string[];
+      readonly newConsolidatedFacts?: readonly {
+        readonly subjectKey?: string;
+        readonly objectKey?: string;
+        readonly factKind: string;
+        readonly statement: string;
+        readonly importance: number;
+        readonly chapterStart: number;
+      }[];
+    },
+  ) {
+    const timestamp = now();
+    return this.#transaction(() => {
+      let count = 0;
+      if (updates.modifiedFacts) {
+        for (const mod of updates.modifiedFacts) {
+          const fact = this.#database.prepare('SELECT fact_id FROM memory_facts WHERE project_id = ? AND fact_id = ?').get(projectId, mod.factId);
+          if (fact) {
+            this.#database.prepare(`
+              UPDATE memory_facts
+              SET statement = COALESCE(?, statement),
+                  importance = COALESCE(?, importance),
+                  status = COALESCE(?, status),
+                  memory_class = COALESCE(?, memory_class),
+                  retrieval_scope = COALESCE(?, retrieval_scope),
+                  updated_at = ?
+              WHERE fact_id = ?
+            `).run(mod.statement ?? null, mod.importance ?? null, mod.status ?? null, mod.memoryClass ?? null, mod.retrievalScope ?? null, timestamp, mod.factId);
+            count += 1;
+          }
+        }
+      }
+      if (updates.archivedFactIds) {
+        for (const fid of updates.archivedFactIds) {
+          this.#database.prepare(`UPDATE memory_facts SET status = 'archived', updated_at = ? WHERE project_id = ? AND fact_id = ?`)
+            .run(timestamp, projectId, fid);
+          count += 1;
+        }
+      }
+      if (updates.newConsolidatedFacts) {
+        for (const cf of updates.newConsolidatedFacts) {
+          const factId = `fact-${randomUUID()}`;
+          this.#database.prepare(`
+            INSERT INTO memory_facts(fact_id, project_id, fact_kind, subject_key, object_key,
+              statement, chapter_start, reader_visible_from, evidence_excerpt, confidence, status, memory_class, importance,
+              retention_policy, retrieval_scope, consolidation_status, character_knowledge_json, created_by, created_at, updated_at)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'AI 记忆管理精炼归并', 1.0, 'confirmed', 'canon', ?, 'stable', 'series', 'consolidated', '{}', 'memory-agent', ?, ?)
+          `).run(factId, projectId, cf.factKind, cf.subjectKey ?? null, cf.objectKey ?? null, cf.statement, cf.chapterStart || 1, cf.chapterStart || 1, cf.importance || 0.85, timestamp, timestamp);
+          count += 1;
+        }
+      }
+      return count;
+    });
+  }
+
   log(projectId: string, taskId: string | null, segmentId: string | null, eventType: string, message: string, details: unknown) {
     this.#database.prepare(`INSERT INTO operation_log(log_id, project_id, task_id, segment_id, event_type, message, details_json, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(`log-${randomUUID()}`, projectId, taskId, segmentId, eventType, message, safeJson(details), now());

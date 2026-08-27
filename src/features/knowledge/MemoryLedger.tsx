@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Check, GitBranch, Link2, Network, Search, Unlink } from 'lucide-react';
+import { AlertTriangle, Bot, Check, GitBranch, Link2, Network, Search, Unlink } from 'lucide-react';
 import type { AmbiguityRecord, MemoryFactRecord, SeriesAssignmentRecord, SeriesSummaryRecord } from '../../core/workflow/models';
+import { DomainAgentDrawer } from '../agent/DomainAgentDrawer';
 import '../../styles/knowledge.css';
 
 const factLabel: Record<string, string> = { character: '人物状态', event: '事件', relationship: '关系变化', address: '称呼', voice: '说话风格', viewpoint: '叙述视角', setting: '场景设定', secret: '秘密', foreshadowing: '伏笔', pun: '双关 / 谐音', 'scene-summary': '场景摘要', 'chapter-summary': '章节摘要' };
@@ -61,6 +62,8 @@ export const MemoryLedger = ({ projectId }: { readonly projectId: string }) => {
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState('all');
   const [view, setView] = useState<'memory' | 'ambiguity'>('memory');
+  const [agentOpen, setAgentOpen] = useState(false);
+
   const load = useCallback(async () => {
     if (!api) return;
     const [nextFacts, nextAmbiguities, nextAssignment, nextSeries] = await Promise.all([
@@ -85,7 +88,24 @@ export const MemoryLedger = ({ projectId }: { readonly projectId: string }) => {
     else { setAssignment(null); setSeriesName(''); setSeriesMessage('已解除系列归属，跨卷记忆不会再进入提示词。'); await load(); }
   };
   return <div className="knowledge-page memory-page">
-    <header><Network size={22} /><div><p className="eyebrow">事件与记忆</p><h1>人类阅读记忆库</h1><p>按证据、时间、读者知识和保留等级巩固作品认知；旧状态保留为历史，不会被新事实直接删除。</p></div></header>
+    <header>
+      <Network size={22} />
+      <div>
+        <p className="eyebrow">事件与记忆</p>
+        <h1>人类阅读记忆库</h1>
+        <p>按证据、时间、读者知识和保留等级巩固作品认知；旧状态保留为历史，不会被新事实直接删除。</p>
+      </div>
+      <div style={{ marginLeft: 'auto' }}>
+        <button
+          type="button"
+          className="glossary-agent-trigger-btn"
+          onClick={() => setAgentOpen(true)}
+        >
+          <Bot size={15} />
+          <span>AI 记忆管理助理</span>
+        </button>
+      </div>
+    </header>
     <section className="series-rail">
       <header><GitBranch size={17} /><div><strong>跨卷系列记忆</strong><span>{assignment ? `${assignment.name} · ${assignment.volumeLabel}` : '未关联系列：当前作品保持完全隔离'}</span></div></header>
       <div className="series-fields">
@@ -108,5 +128,12 @@ export const MemoryLedger = ({ projectId }: { readonly projectId: string }) => {
       <header><AlertTriangle size={17} /><div><strong>多解、双关与指向裁定</strong><p>候选解释不会自动成为事实。选择“保留原文多解”时，翻译模型被禁止擅自选边。</p></div></header>
       {ambiguities.length ? ambiguities.map((item) => <AmbiguityRow key={item.ambiguityId} item={item} onSaved={load} />) : <p className="knowledge-empty">暂无需要裁定的歧义。新版预读会把双关、指代、动作方向和叙事层多解单独保存。</p>}
     </main>}
+    <DomainAgentDrawer
+      projectId={projectId}
+      domain="memory"
+      isOpen={agentOpen}
+      onClose={() => setAgentOpen(false)}
+      onUpdated={load}
+    />
   </div>;
 };

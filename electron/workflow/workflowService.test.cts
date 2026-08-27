@@ -107,4 +107,69 @@ describe('WorkflowService & Pre-read utilities', () => {
       service.close();
     }
   });
+
+  it('runs multi-domain agents with full project context', async () => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), 'kitauji-domain-agent-'));
+    directories.push(directory);
+    const databasePath = path.join(directory, 'project.sqlite');
+    const sourceBytes = new Uint8Array(Buffer.from('第一章\\nターニャは前進した。', 'utf8'));
+    const parsed = parseTxtDocument(sourceBytes);
+    const projectId = 'project-agent-test-001';
+    const projectDatabase = new ProjectDatabase(databasePath);
+    projectDatabase.persistTxtProject({
+      project: {
+        projectId, title: 'Agent测试', sourcePath: 'D:\\\\Agent测试.txt', sourceFormat: 'txt',
+        sourceEncoding: parsed.encoding, contentMode: 'japanese', sourceHash: 'b'.repeat(64),
+        sourceSizeBytes: sourceBytes.length, chapterCount: parsed.chapters.length,
+        paragraphCount: parsed.paragraphCount, characterCount: parsed.characterCount,
+        importedAt: '2026-08-27T00:00:00.000Z', updatedAt: '2026-08-27T00:00:00.000Z', lastOpenedAt: '2026-08-27T00:00:00.000Z',
+      },
+      originalBytes: sourceBytes, decodedText: parsed.text, newline: parsed.newline, chapters: parsed.chapters,
+    });
+    projectDatabase.close();
+
+    const settings = new ProviderSettingsStore(path.join(directory, 'settings'), {
+      isEncryptionAvailable: () => true,
+      encryptString: (plainText: string) => Buffer.from(plainText, 'utf8'),
+      decryptString: (encrypted: Buffer) => encrypted.toString('utf8'),
+    });
+    const profile = settings.getProfile('deepseek-official')!;
+    settings.saveProfile({ ...profile, maxRetries: 0, timeoutSeconds: 30, apiKey: 'test-key' });
+    settings.setActive(profile.profileId);
+
+    const characterAgentResponse = JSON.stringify({
+      summary: '已为谭雅添加别名并建立战友关系。',
+      modifiedCharacters: [
+        { sourceTerm: 'ターニャ', translatedTerm: '谭雅·提古雷查夫', gender: 'female', sense: '帝国第二O三航空魔导大队大队长', aliases: ['提古雷查夫', '白银'] }
+      ],
+      newRelationships: [
+        { subject: 'ターニャ', predicate: '上下级', object: 'レルゲン', statement: '谭雅服从雷鲁根少校的作战调度指令', importance: 0.9 }
+      ]
+    });
+
+    const fetchMock = vi.fn<typeof fetch>(async () => {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: characterAgentResponse }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 20, completion_tokens: 20 },
+      }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = new WorkflowService(databasePath, settings);
+    try {
+      // 预先导入术语
+      service.importGlossary(projectId, [
+        { sourceTerm: 'ターニャ', canonicalChinese: '谭雅', category: 'character', note: '', pronunciation: '' }
+      ], false);
+
+      const result = await service.runDomainAgent('character', projectId, '为谭雅补充全名和与雷鲁根的关系');
+      expect(result.summary).toContain('已为谭雅添加别名并建立战友关系');
+      expect(result.appliedCount).toBeGreaterThanOrEqual(1);
+
+      const facts = service.memory(projectId);
+      expect(facts.some((f) => f.statement.includes('雷鲁根少校'))).toBe(true);
+    } finally {
+      service.close();
+    }
+  });
 });

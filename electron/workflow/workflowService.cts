@@ -704,6 +704,283 @@ export class WorkflowService {
     };
   }
 
+  async runDomainAgent(
+    domain: 'glossary' | 'character' | 'memory' | 'workshop' | 'review',
+    projectId: string,
+    instruction: string,
+    options?: { activeChapterId?: string; activeSegmentIds?: readonly string[] },
+  ) {
+    if (domain === 'glossary') {
+      return this.runGlossaryAgent(projectId, instruction);
+    }
+
+    const snapshot = this.#providerSettings.snapshot();
+    const profile = this.#providerSettings.getProfile(snapshot.activeProfileId);
+    const key = this.#providerSettings.getApiKey(snapshot.activeProfileId);
+    if (!profile || !key) throw new Error('请先在“设置 → 模型与接口”保存并启用可用模型服务。');
+
+    const globalCtx = this.#repository.getProjectGlobalContext(projectId);
+    const adapter = this.#adapter(profile, key);
+    const startedAt = Date.now();
+    const agentModel = profile.agentModel?.trim() || profile.reviewModel?.trim() || profile.model;
+    const agentReasoning = profile.agentReasoningEffort || 'low';
+
+    // 格式化全景上下文概要
+    const globalContextSummary = `
+【全书全局专名与术语概览（共 ${globalCtx.glossary.length} 条）】
+${JSON.stringify(globalCtx.glossary.slice(0, 100).map((g) => ({ id: g.glossaryId, source: g.sourceTerm, cn: g.translatedTerm, kind: g.entityKind, gender: g.gender, status: g.status })), null, 2)}
+
+【全书核心人物档案与别名】
+${JSON.stringify(globalCtx.entities.slice(0, 40), null, 2)}
+
+【长程世界线与事件记忆事实（精选前 80 条）】
+${JSON.stringify(globalCtx.facts.slice(0, 80).map((f) => ({ id: f.factId, kind: f.factKind, sub: f.subjectKey, obj: f.objectKey, stmt: f.statement, ch: f.chapterStart, imp: f.importance, status: f.status })), null, 2)}
+
+【章节大纲与篇幅】
+${JSON.stringify(globalCtx.chapters, null, 2)}
+
+【统一文风决策】
+${JSON.stringify(globalCtx.styleDecisions, null, 2)}
+`.trim();
+
+    if (domain === 'character') {
+      this.#emitLog('api', 'system', `👥 AI 人物关系 Agent (${agentModel} · 思考: ${agentReasoning}) 正在分析指令：“${instruction}”...`);
+      const systemPrompt = `你是一个轻小说/文学作品人物关系与角色档案的专属 AI 助理。
+你拥有全书所有术语、记忆事实、章节和文风的全景数据视界。
+你的任务是根据用户指令和全书剧情证据，精准梳理角色档案、建立阵营归属、规范称谓阶级、绑定多形态别名或新建人物关系事实。
+
+【输出格式】
+只输出一个合法的 JSON 对象，格式如下：
+{
+  "summary": "向用户说明你梳理与修改了哪些人物、别名或关系",
+  "modifiedCharacters": [
+    {
+      "sourceTerm": "角色的日文原名（必须存在于术语表中）",
+      "translatedTerm": "修正后的中文全名（可选）",
+      "gender": "male|female|unknown|not-applicable（可选）",
+      "sense": "更新后的人物身份、从军背景或设定概要（可选）",
+      "notes": "备注说明（可选）",
+      "status": "confirmed|locked（可选）",
+      "aliases": ["别名1", "别名2"]
+    }
+  ],
+  "newRelationships": [
+    {
+      "subject": "主体人物日文名或全名",
+      "predicate": "关系类型（如 上下级 / 战友 / 敌对 / 崇敬 / 称呼）",
+      "object": "客体人物日文名或全名",
+      "statement": "中文关系陈述（如：谭雅对雷鲁根少校保持表面恭顺但内心视为官僚障碍）",
+      "importance": 0.85
+    }
+  ]
+}`;
+
+      const response = await adapter.request({
+        model: agentModel,
+        reasoningEffort: agentReasoning,
+        system: systemPrompt,
+        user: `${globalContextSummary}\n\n【用户指令】\n${instruction}`,
+        responseFormat: 'json',
+        temperature: 0.1,
+      });
+
+      const parsed = parseJson(response.text) as {
+        summary?: string;
+        modifiedCharacters?: Array<Record<string, unknown>>;
+        newRelationships?: Array<Record<string, unknown>>;
+      };
+      const summary = String(parsed?.summary ?? '已完成人物关系与档案梳理。');
+      const appliedCount = this.#repository.updateCharacterRelations(projectId, {
+        modifiedCharacters: parsed?.modifiedCharacters as any,
+        newRelationships: parsed?.newRelationships as any,
+      });
+
+      const elapsed = Date.now() - startedAt;
+      this.#emitLog('success', 'system', `👥 人物关系 Agent 执行完成：${summary} (耗时: ${(elapsed / 1000).toFixed(1)}s · 更新 ${appliedCount} 处)`);
+      return { summary, appliedCount, updates: [...(parsed?.modifiedCharacters ?? []), ...(parsed?.newRelationships ?? [])] };
+    }
+
+    if (domain === 'memory') {
+      this.#emitLog('api', 'system', `🧠 AI 记忆管理 Agent (${agentModel} · 思考: ${agentReasoning}) 正在分析指令：“${instruction}”...`);
+      const systemPrompt = `你是一个轻小说/文学作品长程记忆与世界线事实的专属 AI 助理。
+你拥有全书所有术语、记忆事实、章节大纲的全景数据视界。
+你的任务是根据用户指令，精炼核心主线、重估事实重要度（0.0~1.0）、锁定关键事实、归并重复事件或裁定假说。
+
+【输出格式】
+只输出一个合法的 JSON 对象，格式如下：
+{
+  "summary": "向用户说明你精炼与调整了哪些记忆事实",
+  "modifiedFacts": [
+    {
+      "factId": "事实的 factId（必须存在于当前事实库中）",
+      "statement": "精炼后的中文事实陈述（可选）",
+      "importance": 0.9,
+      "status": "confirmed|locked|archived",
+      "memoryClass": "canon|character|relationship|event|state|episode-detail"
+    }
+  ],
+  "archivedFactIds": ["要归档/排除的冗余 factId"],
+  "newConsolidatedFacts": [
+    {
+      "subjectKey": "主语（可选）",
+      "objectKey": "宾语（可选）",
+      "factKind": "event|setting|character|relationship",
+      "statement": "新精炼生成的全局长程事实",
+      "importance": 0.95,
+      "chapterStart": 1
+    }
+  ]
+}`;
+
+      const response = await adapter.request({
+        model: agentModel,
+        reasoningEffort: agentReasoning,
+        system: systemPrompt,
+        user: `${globalContextSummary}\n\n【用户指令】\n${instruction}`,
+        responseFormat: 'json',
+        temperature: 0.1,
+      });
+
+      const parsed = parseJson(response.text) as {
+        summary?: string;
+        modifiedFacts?: Array<Record<string, unknown>>;
+        archivedFactIds?: string[];
+        newConsolidatedFacts?: Array<Record<string, unknown>>;
+      };
+      const summary = String(parsed?.summary ?? '已完成记忆事实重构与精炼。');
+      const appliedCount = this.#repository.updateMemoryFacts(projectId, {
+        modifiedFacts: parsed?.modifiedFacts as any,
+        archivedFactIds: parsed?.archivedFactIds as any,
+        newConsolidatedFacts: parsed?.newConsolidatedFacts as any,
+      });
+
+      const elapsed = Date.now() - startedAt;
+      this.#emitLog('success', 'system', `🧠 记忆管理 Agent 执行完成：${summary} (耗时: ${(elapsed / 1000).toFixed(1)}s · 更新 ${appliedCount} 处事实)`);
+      return { summary, appliedCount, updates: [...(parsed?.modifiedFacts ?? []), ...(parsed?.newConsolidatedFacts ?? [])] };
+    }
+
+    if (domain === 'workshop') {
+      const chapterId = options?.activeChapterId;
+      const chapter = globalCtx.chapters.find((c) => c.chapter_id === chapterId);
+      const segments = chapterId
+        ? (this.#repository.workbench(projectId, chapterId, 0, 80).segments)
+        : [];
+
+      this.#emitLog('api', 'system', `✍️ AI 翻译润色 Agent (${agentModel} · 思考: ${agentReasoning}) 正在分析指令：“${instruction}” (章节: 第 ${chapter?.ordinal ?? 1} 章 · 段落数: ${segments.length})...`);
+
+      const systemPrompt = `你是一个出版级轻小说/文学作品翻译润色专属 AI 助理。
+你拥有全景术语表、核心人物关系与世界线记忆。
+你的任务是根据用户指令，对给出的段落进行批量重润色、消除翻译腔、对齐专名与标点规范、重构自然流畅的出版级译文。
+
+【硬性忠实与文学规范】
+1. 绝对忠实原文语义，严禁擅自增删情节；
+2. 自然省略生硬多余的第三人称代词（“他/她”），被动语态文学化意合重构；
+3. 严格遵循日文原著标点（『』独白/标题/着重、「」对话、——破折号），严禁使用英文半角双引号。
+
+【输出格式】
+只输出一个合法的 JSON 对象，格式如下：
+{
+  "summary": "向用户说明你进行了哪些润色与纠偏",
+  "polishedSegments": [
+    {
+      "segmentId": "段落的 segmentId",
+      "text": "重润色后的完美中文成稿",
+      "explanation": "修改要点说明（如：去除代词、对齐专名）"
+    }
+  ]
+}`;
+
+      const response = await adapter.request({
+        model: agentModel,
+        reasoningEffort: agentReasoning,
+        system: systemPrompt,
+        user: `${globalContextSummary}\n\n【待润色段落（第 ${chapter?.ordinal ?? 1} 章，共 ${segments.length} 段）】\n${JSON.stringify(segments.map((s) => ({ id: s.segmentId, ordinal: s.segmentOrdinal, jp: s.sourceText, currentCn: s.selectedTranslation || s.originalTranslation })), null, 2)}\n\n【用户润色指令】\n${instruction}`,
+        responseFormat: 'json',
+        temperature: 0.2,
+      });
+
+      const parsed = parseJson(response.text) as {
+        summary?: string;
+        polishedSegments?: Array<{ segmentId: string; text: string; explanation?: string }>;
+      };
+      const summary = String(parsed?.summary ?? '已完成段落批量润色。');
+      const polished = Array.isArray(parsed?.polishedSegments) ? parsed.polishedSegments : [];
+
+      let appliedCount = 0;
+      for (const item of polished) {
+        if (item.segmentId && item.text?.trim()) {
+          try {
+            this.saveManual(item.segmentId, item.text.trim());
+            appliedCount += 1;
+          } catch {
+            // continue
+          }
+        }
+      }
+
+      const elapsed = Date.now() - startedAt;
+      this.#emitLog('success', 'system', `✍️ 翻译润色 Agent 执行完成：${summary} (耗时: ${(elapsed / 1000).toFixed(1)}s · 润色成稿 ${appliedCount} 段)`);
+      return { summary, appliedCount, details: polished.map((p) => `段落 #${p.segmentId.slice(0, 8)}: ${p.explanation ?? '已润色'}`), updates: polished };
+    }
+
+    if (domain === 'review') {
+      const openReviews = globalCtx.reviews;
+      this.#emitLog('api', 'system', `🛡️ AI 审校仲裁 Agent (${agentModel} · 思考: ${agentReasoning}) 正在分析指令：“${instruction}” (待裁定复核项: ${openReviews.length} 条)...`);
+
+      const systemPrompt = `你是一个轻小说/文学作品翻译质量复核与争议仲裁专属 AI 助理。
+你拥有全景专名表、人物关系与长程事实。
+你的任务是根据用户指令和全书设定，对复核队列中的冲突、警告与文学多解进行批量裁定，生成符合忠实规则的成稿并接受，或驳回重做。
+
+【输出格式】
+只输出一个合法的 JSON 对象，格式如下：
+{
+  "summary": "向用户说明你裁定了哪些复核项",
+  "resolutions": [
+    {
+      "reviewId": "复核项的 reviewId",
+      "action": "accept|reject",
+      "proposedText": "最终裁定接受的中文译文（action 为 accept 时必填）",
+      "rationale": "裁定理由"
+    }
+  ]
+}`;
+
+      const response = await adapter.request({
+        model: agentModel,
+        reasoningEffort: agentReasoning,
+        system: systemPrompt,
+        user: `${globalContextSummary}\n\n【待裁定复核项列表（共 ${openReviews.length} 项）】\n${JSON.stringify(openReviews.map((r) => ({ id: r.reviewId, category: r.category, severity: r.severity, title: r.title, explanation: r.explanation, source: r.sourceText, current: r.currentTranslation, proposed: r.proposedText })), null, 2)}\n\n【用户仲裁指令】\n${instruction}`,
+        responseFormat: 'json',
+        temperature: 0.1,
+      });
+
+      const parsed = parseJson(response.text) as {
+        summary?: string;
+        resolutions?: Array<{ reviewId: string; action: 'accept' | 'reject'; proposedText?: string; rationale?: string }>;
+      };
+      const summary = String(parsed?.summary ?? '已完成复核项批量仲裁。');
+      const resolutions = Array.isArray(parsed?.resolutions) ? parsed.resolutions : [];
+
+      let appliedCount = 0;
+      for (const res of resolutions) {
+        if (res.reviewId) {
+          try {
+            this.resolveReview(res.reviewId, res.action, res.proposedText);
+            appliedCount += 1;
+          } catch {
+            // continue
+          }
+        }
+      }
+
+      const elapsed = Date.now() - startedAt;
+      this.#emitLog('success', 'system', `🛡️ 审校仲裁 Agent 执行完成：${summary} (耗时: ${(elapsed / 1000).toFixed(1)}s · 裁定 ${appliedCount} 项)`);
+      return { summary, appliedCount, details: resolutions.map((r) => `[${r.action}] ${r.rationale ?? '已裁定'}`), updates: resolutions };
+    }
+
+    throw new Error(`未知的 Agent 板块类型: ${domain}`);
+  }
+
   start(input: StartWorkflowInput) {
     const snapshot = this.#providerSettings.snapshot();
     const profile = this.#providerSettings.getProfile(snapshot.activeProfileId);

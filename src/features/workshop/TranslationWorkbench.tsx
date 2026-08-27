@@ -3,6 +3,7 @@ import {
   AlertCircle,
   AlertTriangle,
   BookOpen,
+  Bot,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -30,6 +31,7 @@ import { ProjectHeading } from '../projects/ProjectHeading';
 import { useWorkflowOverview } from '../workflow/useWorkflowOverview';
 import { FindReplaceModal } from './FindReplaceModal';
 import { LiveConsoleDrawer } from '../console/LiveConsoleDrawer';
+import { DomainAgentDrawer } from '../agent/DomainAgentDrawer';
 import '../../styles/workshop.css';
 import '../../styles/console.css';
 
@@ -270,6 +272,7 @@ export const TranslationWorkbench = ({ library, onNavigateTab }: TranslationWork
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [chapterSearch, setChapterSearch] = useState('');
   const [isFindReplaceOpen, setIsFindReplaceOpen] = useState(false);
+  const [isAgentOpen, setIsAgentOpen] = useState(false);
   const [isStopConfirming, setIsStopConfirming] = useState(false);
 
   const workflow = useWorkflowOverview(project?.project.projectId ?? null);
@@ -677,6 +680,15 @@ export const TranslationWorkbench = ({ library, onNavigateTab }: TranslationWork
             <button
               type="button"
               className="control-btn control-btn--tool"
+              onClick={() => setIsAgentOpen(true)}
+              title="AI 翻译润色助理：调取场景设定与长程记忆，批量重润色段落并彻底去除翻译腔"
+            >
+              <Bot size={15} /> AI 润色助理
+            </button>
+
+            <button
+              type="button"
+              className="control-btn control-btn--tool"
               onClick={() => setIsFindReplaceOpen(true)}
               title="全局查找与替换"
             >
@@ -945,6 +957,17 @@ export const TranslationWorkbench = ({ library, onNavigateTab }: TranslationWork
 
       {/* Live Execution Console & Terminal */}
       <LiveConsoleDrawer activeTask={workflow.activeTasks.find((t) => t.status === 'running') ?? workflow.activeTasks[0] ?? null} />
+
+      {/* Domain AI Agent Drawer */}
+      <DomainAgentDrawer
+        projectId={project.project.projectId}
+        domain="workshop"
+        activeChapterId={chapterId}
+        activeSegmentIds={visibleSegments.map((s) => s.segmentId)}
+        isOpen={isAgentOpen}
+        onClose={() => setIsAgentOpen(false)}
+        onUpdated={() => void load(false)}
+      />
     </div>
   );
 };

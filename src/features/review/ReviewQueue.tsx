@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Check, ShieldCheck, X } from 'lucide-react';
+import { Bot, Check, ShieldCheck, X } from 'lucide-react';
 import type { ReviewQueueRecord } from '../../core/workflow/models';
+import { DomainAgentDrawer } from '../agent/DomainAgentDrawer';
 import '../../styles/review.css';
 
 const categoryLabel: Record<string, string> = { 'hard-rule': '忠实硬规则', semantic: '语义判断', glossary: '术语冲突', identity: '人物身份', 'knowledge-boundary': '知识边界', 'literary-choice': '文学多解', format: '格式结构', 'provider-refusal': '接口拒绝' };
@@ -19,8 +20,62 @@ const ReviewCard = ({ item, onResolved }: { item: ReviewQueueRecord; onResolved:
 };
 
 export const ReviewQueue = ({ projectId }: { readonly projectId: string }) => {
-  const api = window.kitaujiDesktop?.workflow; const [items, setItems] = useState<readonly ReviewQueueRecord[]>([]); const [loading, setLoading] = useState(true);
-  const load = useCallback(async () => { if (!api) return; setLoading(true); try { setItems(await api.reviews(projectId)); } finally { setLoading(false); } }, [api, projectId]);
-  useEffect(() => { void load(); }, [load]);
-  return <div className="review-page"><header><ShieldCheck size={22} /><div><p className="eyebrow">质量复核</p><h1>复核队列</h1><p>查看并裁定需要人工介入的专名冲突、语义分歧与重要文学多解。</p></div><strong>{items.length}</strong></header><main>{loading ? <p className="review-empty">正在加载复核队列…</p> : items.length ? items.map((item) => <ReviewCard key={item.reviewId} item={item} onResolved={load} />) : <p className="review-empty">当前队列已清空，暂无待复核事项。</p>}</main></div>;
+  const api = window.kitaujiDesktop?.workflow;
+  const [items, setItems] = useState<readonly ReviewQueueRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [agentOpen, setAgentOpen] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!api) return;
+    setLoading(true);
+    try {
+      setItems(await api.reviews(projectId));
+    } finally {
+      setLoading(false);
+    }
+  }, [api, projectId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <div className="review-page">
+      <header>
+        <ShieldCheck size={22} />
+        <div>
+          <p className="eyebrow">质量复核</p>
+          <h1>复核队列</h1>
+          <p>查看并裁定需要人工介入的专名冲突、语义分歧与重要文学多解。</p>
+        </div>
+        <strong>{items.length}</strong>
+        <div style={{ marginLeft: 'auto' }}>
+          <button
+            type="button"
+            className="glossary-agent-trigger-btn"
+            onClick={() => setAgentOpen(true)}
+          >
+            <Bot size={15} />
+            <span>AI 审校仲裁助理</span>
+          </button>
+        </div>
+      </header>
+      <main>
+        {loading ? (
+          <p className="review-empty">正在加载复核队列…</p>
+        ) : items.length ? (
+          items.map((item) => <ReviewCard key={item.reviewId} item={item} onResolved={load} />)
+        ) : (
+          <p className="review-empty">当前队列已清空，暂无待复核事项。</p>
+        )}
+      </main>
+      <DomainAgentDrawer
+        projectId={projectId}
+        domain="review"
+        isOpen={agentOpen}
+        onClose={() => setAgentOpen(false)}
+        onUpdated={load}
+      />
+    </div>
+  );
 };

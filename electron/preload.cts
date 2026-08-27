@@ -63,6 +63,8 @@ contextBridge.exposeInMainWorld('kitaujiDesktop', {
     importGlossary: (projectId: string, records: readonly unknown[], locked: boolean) => ipcRenderer.invoke('workflow:import-glossary', projectId, records, locked),
     updateGlossary: (glossaryId: string, input: unknown) => ipcRenderer.invoke('workflow:update-glossary', glossaryId, input),
     runGlossaryAgent: (projectId: string, instruction: string) => ipcRenderer.invoke('workflow:run-glossary-agent', projectId, instruction),
+    runDomainAgent: (domain: string, projectId: string, instruction: string, options?: unknown) =>
+      ipcRenderer.invoke('workflow:run-domain-agent', domain, projectId, instruction, options),
     exportFinal: (projectId: string, mode: 'jp-cn' | 'cn-jp' | 'cn-only') => ipcRenderer.invoke('workflow:export-final', projectId, mode),
     getRecentLogs: () => ipcRenderer.invoke('workflow:get-recent-logs'),
     clearLogs: () => ipcRenderer.invoke('workflow:clear-logs'),
