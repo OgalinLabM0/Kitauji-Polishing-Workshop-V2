@@ -1,0 +1,318 @@
+/* Live Console / Terminal Styles */
+.live-console-trigger {
+  position: fixed;
+  bottom: 20px;
+  right: 24px;
+  z-index: 990;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  background: #18181b;
+  color: #f4f4f5;
+  border: 1px solid #27272a;
+  border-radius: var(--radius-full);
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: calc(12px * var(--text-scale));
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.live-console-trigger:hover {
+  background: #27272a;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.live-console-trigger.open {
+  background: var(--uniform);
+  color: #ffffff;
+  border-color: var(--uniform-hover);
+}
+
+.console-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #71717a;
+}
+
+.console-dot.running {
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+  animation: pulseGreen 1.8s infinite;
+}
+
+.console-dot.error {
+  background: #ef4444;
+  box-shadow: 0 0 8px #ef4444;
+}
+
+.console-badge-error {
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+@keyframes pulseGreen {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.2); }
+}
+
+/* Console Drawer Window */
+.live-console-drawer {
+  position: fixed;
+  bottom: 64px;
+  right: 24px;
+  width: min(1040px, calc(100vw - 48px));
+  height: min(440px, 60vh);
+  background: #09090b;
+  color: #f4f4f5;
+  border: 1px solid #27272a;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  z-index: 995;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: drawerSlideUp 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes drawerSlideUp {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.live-console-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #18181b;
+  border-bottom: 1px solid #27272a;
+  gap: 12px;
+  user-select: none;
+}
+
+.live-console-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: calc(12px * var(--text-scale));
+  font-weight: 700;
+  color: #fafafa;
+}
+
+.live-console-filters {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.console-filter-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #a1a1aa;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: calc(11px * var(--text-scale));
+  cursor: pointer;
+  transition: all 120ms ease;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+.console-filter-btn:hover {
+  background: #27272a;
+  color: #f4f4f5;
+}
+
+.console-filter-btn.active {
+  background: #27272a;
+  border-color: #3f3f46;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.live-console-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.console-action-btn {
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  color: #d4d4d8;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: calc(11px * var(--text-scale));
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 120ms ease;
+}
+
+.console-action-btn:hover {
+  background: #3f3f46;
+  color: #ffffff;
+}
+
+.console-action-btn.active {
+  background: #0284c7;
+  border-color: #38bdf8;
+  color: #ffffff;
+}
+
+.console-close-btn {
+  background: transparent;
+  border: 0;
+  color: #71717a;
+  cursor: pointer;
+  padding: 4px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+}
+
+.console-close-btn:hover {
+  background: #27272a;
+  color: #f4f4f5;
+}
+
+/* Console Body & Logs */
+.live-console-body {
+  flex: 1;
+  padding: 12px 16px;
+  overflow-y: auto;
+  font-family: ui-monospace, "Cascadia Code", Consolas, "Courier New", monospace;
+  font-size: calc(12px * var(--text-scale));
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.console-empty {
+  margin: auto;
+  color: #52525b;
+  font-style: italic;
+}
+
+.console-log-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(63, 63, 70, 0.38);
+}
+
+.console-log-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  word-break: break-all;
+}
+
+.console-log-details {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding-left: 61px;
+  color: #a1a1aa;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.console-detail-text {
+  flex: 1 1 560px;
+  word-break: break-word;
+}
+
+.console-meta-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.console-time {
+  color: #71717a;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.console-stage {
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.console-stage--pre-read {
+  background: rgba(14, 165, 233, 0.18);
+  color: #38bdf8;
+}
+
+.console-stage--translate {
+  background: rgba(168, 85, 247, 0.18);
+  color: #c084fc;
+}
+
+.console-stage--review {
+  background: rgba(234, 179, 8, 0.18);
+  color: #facc15;
+}
+
+.console-stage--system {
+  background: rgba(113, 113, 122, 0.18);
+  color: #a1a1aa;
+}
+
+.console-level {
+  font-weight: 700;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.console-level--info { color: #38bdf8; }
+.console-level--api { color: #f59e0b; }
+.console-level--success { color: #22c55e; }
+.console-level--warn { color: #fbbf24; font-weight: 800; }
+.console-level--error { color: #f87171; font-weight: 800; }
+
+.console-msg {
+  color: #e4e4e7;
+  flex: 1;
+}
+
+.console-meta {
+  color: #71717a;
+  font-size: 10px;
+  background: #18181b;
+  padding: 1px 6px;
+  border-radius: 2px;
+  border: 1px solid #27272a;
+  flex-shrink: 0;
+}
+
+/* Console Footer */
+.live-console-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  background: #18181b;
+  border-top: 1px solid #27272a;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: calc(11px * var(--text-scale));
+  color: #71717a;
+}

@@ -1,0 +1,236 @@
+.project-empty-copy {
+  max-width: 760px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: calc(14px * var(--text-scale));
+  line-height: 1.7;
+}
+
+.project-statline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  margin: 20px 0 0;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.project-statline div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border-left: 1px solid var(--line);
+  padding: 0 20px;
+}
+
+.project-statline div:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+
+.project-statline dt {
+  color: var(--muted);
+  font-size: calc(13px * var(--text-scale));
+  font-weight: 500;
+}
+
+.project-statline dd {
+  margin: 0;
+  color: var(--ink);
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: calc(14px * var(--text-scale));
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.project-feedback {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 0;
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  font-size: calc(13px * var(--text-scale));
+  line-height: 1.5;
+  box-shadow: var(--shadow-xs);
+}
+
+.project-feedback svg {
+  flex: 0 0 auto;
+}
+
+.project-feedback--success {
+  border-color: var(--emerald-border);
+  background: var(--emerald-bg);
+  color: var(--emerald);
+}
+
+.project-feedback--error {
+  border-color: var(--rose-border);
+  background: var(--rose-bg);
+  color: var(--rose);
+}
+
+.chapter-list {
+  margin: 0;
+  padding: 8px 18px;
+  list-style: none;
+}
+
+.chapter-list li {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0;
+}
+
+.chapter-list li:last-child {
+  border-bottom: 0;
+}
+
+.chapter-number {
+  flex: 0 0 auto;
+  color: var(--brass-hover);
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: calc(13px * var(--text-scale));
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.chapter-list li div {
+  min-width: 0;
+}
+
+.chapter-list strong,
+.chapter-list span,
+.recent-projects strong,
+.recent-projects span {
+  display: block;
+}
+
+.chapter-list strong {
+  color: var(--ink);
+  font-size: calc(13px * var(--text-scale));
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.chapter-list li div span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: calc(12px * var(--text-scale));
+}
+
+.chapter-list .chapter-more {
+  color: var(--muted);
+  font-size: calc(13px * var(--text-scale));
+  padding: 10px 0;
+}
+
+.recent-projects {
+  border-top: 1px solid var(--line);
+  padding: 16px 20px;
+}
+
+.recent-projects h3 {
+  margin: 0 0 10px;
+  color: var(--ink);
+  font-size: calc(13px * var(--text-scale));
+  font-weight: 600;
+}
+
+.recent-projects button {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--line);
+  padding: 10px 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  transition: color 150ms ease;
+}
+
+.recent-projects button:hover strong {
+  color: var(--uniform);
+}
+
+.recent-projects strong {
+  font-size: calc(13px * var(--text-scale));
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.recent-projects span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: calc(12px * var(--text-scale));
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.source-inspector-footnote {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border-top: 1px solid var(--line);
+  padding: 12px 18px;
+  color: var(--muted);
+  font-size: calc(12px * var(--text-scale));
+}
+
+.epub-structure-facts {
+  border-top: 1px solid var(--line);
+}
+
+.epub-structure-facts .epub-opf-row {
+  display: block;
+  padding: 10px 18px;
+}
+
+.epub-structure-facts .epub-opf-row dd {
+  margin-top: 4px;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: calc(12px * var(--text-scale));
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  color: var(--ink-soft);
+}
+
+.epub-warning-list {
+  border-top: 1px solid var(--line);
+  padding: 12px 18px;
+  background: var(--amber-bg);
+}
+
+.epub-warning-list p {
+  margin: 0;
+  color: var(--amber);
+  font-size: calc(12px * var(--text-scale));
+  line-height: 1.6;
+}
+
+.epub-warning-list p + p {
+  margin-top: 6px;
+}
+
+@media (max-width: 760px) {
+  .project-statline div {
+    width: 50%;
+    margin-top: 10px;
+    padding: 0 12px;
+  }
+
+  .project-statline div:nth-child(odd) {
+    border-left: 0;
+    padding-left: 0;
+  }
+}
+

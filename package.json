@@ -1,0 +1,36 @@
+{
+  "name": "kitauji-polishing-workshop-v2",
+  "private": true,
+  "version": "0.0.0",
+  "description": "北宇治润色工坊：带长程作品记忆、复核与 EPUB 成品导出的日中小说翻译桌面软件",
+  "main": "dist/electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build:renderer": "tsc --noEmit -p tsconfig.app.json && vite build",
+    "build:electron": "tsc -p tsconfig.electron.json && esbuild electron/main.cts --bundle --platform=node --target=node22 --format=cjs --external:electron --outfile=dist/electron/main.cjs",
+    "build": "npm run build:renderer && npm run build:electron",
+    "start": "npm run build && electron .",
+    "desktop:build": "npm run build",
+    "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-portable.ps1",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "^0.9.12",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.562.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^5.0.0",
+    "electron": "^43.4.1",
+    "esbuild": "0.25.12",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "vitest": "^3.2.4"
+  }
+}

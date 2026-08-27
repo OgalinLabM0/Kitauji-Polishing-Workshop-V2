@@ -1,0 +1,46 @@
+.export-page { min-height: 0; flex: 1; overflow: auto; padding: 38px clamp(24px, 6vw, 86px) 70px; background: #f4f1eb; }
+.export-page > header,
+.export-readiness,
+.export-modes,
+.export-result,
+.export-actions { width: min(940px, 100%); margin-right: auto; margin-left: auto; }
+.export-page > header { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 13px; border-bottom: 1px solid #ccc5bb; padding-bottom: 22px; color: #6b5d55; }
+.export-page > header h1,
+.export-page > header p { margin: 0; }
+.export-page > header h1 { margin-top: 4px; color: #3a3532; font-family: "Noto Serif SC", "Songti SC", serif; font-size: calc(30px * var(--text-scale)); font-weight: 600; }
+.export-page > header div > p:last-child { margin-top: 7px; color: #746c66; font-size: calc(14px * var(--text-scale)); line-height: 1.7; }
+.export-readiness { display: grid; grid-template-columns: 150px 150px minmax(0, 1fr); border-bottom: 1px solid #d4cdc3; padding: 24px 0; }
+.export-readiness > div { border-right: 1px solid #d8d1c8; }
+.export-readiness > div + div { padding-left: 24px; }
+.export-readiness span,
+.export-readiness strong { display: block; }
+.export-readiness span { color: #7e756e; font-size: calc(12px * var(--text-scale)); }
+.export-readiness strong { margin-top: 5px; color: #413b38; font: calc(18px * var(--text-scale))/1.3 Consolas, monospace; }
+.export-readiness p { display: flex; align-items: center; gap: 7px; margin: 0; padding-left: 24px; color: #8b5146; font-size: calc(13px * var(--text-scale)); line-height: 1.6; }
+.export-readiness p.ready { color: #58705e; }
+.export-modes { margin-top: 28px; border-top: 3px solid #78685f; border-right: 1px solid #d5cec4; border-left: 1px solid #d5cec4; background: #fff; }
+.export-modes > header { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 11px; border-bottom: 1px solid #d8d1c8; padding: 20px; color: #6b5e56; }
+.export-modes h2,
+.export-modes p { margin: 0; }
+.export-modes h2 { color: #48413d; font-family: "Noto Serif SC", "Songti SC", serif; font-size: calc(19px * var(--text-scale)); font-weight: 600; }
+.export-modes p { margin-top: 4px; color: #776f69; font-size: calc(13px * var(--text-scale)); line-height: 1.65; }
+.export-modes > label { display: grid; grid-template-columns: 20px 76px minmax(0, 1fr); gap: 12px; align-items: center; border-bottom: 1px solid #e0dad2; padding: 16px 20px; cursor: pointer; }
+.export-modes > label.active { background: #f2eee7; }
+.export-modes > label b { color: #705f55; font: calc(13px * var(--text-scale))/1 Consolas, monospace; }
+.export-modes label span,
+.export-modes label strong,
+.export-modes label small { display: block; }
+.export-modes label strong { color: #45403d; font-size: calc(14px * var(--text-scale)); }
+.export-modes label small { margin-top: 4px; color: #766e68; font-size: calc(12px * var(--text-scale)); line-height: 1.6; }
+.export-result { margin-top: 18px; border-left: 3px solid #78957f; padding: 12px 14px; background: #f1f6f2; color: #526b58; font: calc(12px * var(--text-scale))/1.7 Consolas, "Microsoft YaHei UI", sans-serif; white-space: pre-wrap; overflow-wrap: anywhere; }
+.export-actions { display: flex; align-items: center; gap: 18px; padding-top: 24px; }
+.export-actions button { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; border: 1px solid #625a55; padding: 10px 14px; background: #625a55; color: #fff; font-size: calc(13px * var(--text-scale)); font-weight: 700; }
+.export-actions button:disabled { opacity: .42; }
+.export-actions p { margin: 0; color: #766e68; font-size: calc(12px * var(--text-scale)); line-height: 1.6; }
+
+@media (max-width: 700px) {
+  .export-readiness { grid-template-columns: 1fr 1fr; }
+  .export-readiness p { grid-column: 1 / -1; margin-top: 16px; padding-left: 0; }
+  .export-actions { align-items: flex-start; flex-direction: column; }
+  .export-actions button { width: 100%; justify-content: center; }
+}
