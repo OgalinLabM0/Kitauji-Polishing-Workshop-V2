@@ -17,7 +17,7 @@ import type {
   MemoryFactRecord,
   ReviewQueueRecord,
 } from './models.cjs';
-import { PROMPT_VERSION } from './prompts.cjs';
+import { PROMPT_VERSION, TRANSLATION_PROMPT_VERSION } from './prompts.cjs';
 import { NarrativePersistence } from './narrativePersistence.cjs';
 import { NarrativeRetrieval } from './narrativeRetrieval.cjs';
 import { NarrativeInvalidation } from './narrativeInvalidation.cjs';
@@ -30,6 +30,7 @@ import { SeriesMemory } from './seriesMemory.cjs';
 import { locateSourceSpan } from './sourceSpan.cjs';
 import { memoryPolicyFor } from './memoryPolicy.cjs';
 import { POSITION_SQL } from './narrativePosition.cjs';
+import { undoAddedBoundaryQuoteCompletion, validateTranslationCandidate } from './translationValidation.cjs';
 
 interface TaskRow {
   task_id: string; project_id: string; task_type: WorkflowTaskType; status: WorkflowTaskStatus;
@@ -433,6 +434,63 @@ export class WorkflowRepository {
     return row ? toSegment(row) : null;
   }
 
+  repairSelectedBoundaryQuoteCompletions(projectId: string, chapterId?: string) {
+    const chapterFilter = chapterId ? ' AND s.chapter_id = ?' : '';
+    const parameters = chapterId ? [projectId, chapterId] : [projectId];
+    const rows = this.#database.prepare(`
+      SELECT s.segment_id, s.project_id, s.chapter_id, s.chapter_ordinal, s.segment_ordinal,
+        s.source_block_id, s.target_block_id, s.source_text, s.original_translation, s.status,
+        v.version_id, v.text, v.model, v.provider_profile_id, v.context_manifest_json
+      FROM translation_segments s
+      JOIN translation_versions v ON v.version_id = s.selected_version_id
+      WHERE s.project_id = ?${chapterFilter}
+      ORDER BY s.chapter_ordinal, s.segment_ordinal
+    `).all(...parameters) as unknown as Array<SegmentRow & {
+      version_id: string; text: string; model: string | null; provider_profile_id: string | null; context_manifest_json: string;
+    }>;
+    const repairs = rows.map((row) => ({
+      row,
+      repaired: undoAddedBoundaryQuoteCompletion(row.source_text, row.text),
+    })).filter(({ row, repaired }) => repaired !== row.text);
+    if (!repairs.length) return 0;
+
+    return this.#transaction(() => {
+      const insertVersion = this.#database.prepare(`
+        INSERT INTO translation_versions(version_id, segment_id, project_id, version_number, stage, text,
+          model, provider_profile_id, prompt_version, context_manifest_json, response_id, finish_reason,
+          input_tokens, output_tokens, cached_input_tokens, reasoning_tokens, elapsed_ms, created_at)
+        VALUES(?, ?, ?, ?, 'self-repair', ?, ?, ?, ?, ?, NULL, 'deterministic-boundary-quote-repair',
+          NULL, NULL, NULL, NULL, 0, ?)
+      `);
+      const cloneDependency = this.#database.prepare(`
+        INSERT INTO translation_dependencies(dependency_id, translation_version_id, segment_id, project_id,
+          entity_ids_json, claim_ids_json, event_ids_json, evidence_ids_json, frame_ids_json,
+          memory_ids_json, style_ids_json, ambiguity_ids_json, syntax_evidence_json, series_context_json,
+          direction_constraints_json, context_position_json, created_at)
+        SELECT ?, ?, segment_id, project_id, entity_ids_json, claim_ids_json, event_ids_json,
+          evidence_ids_json, frame_ids_json, memory_ids_json, style_ids_json, ambiguity_ids_json,
+          syntax_evidence_json, series_context_json, direction_constraints_json, context_position_json, ?
+        FROM translation_dependencies WHERE translation_version_id = ?
+      `);
+      const timestamp = now();
+      repairs.forEach(({ row, repaired }) => {
+        const versionNumber = ((this.#database.prepare('SELECT max(version_number) AS value FROM translation_versions WHERE segment_id = ?').get(row.segment_id) as { value: number | null }).value ?? 0) + 1;
+        const versionId = `version-${randomUUID()}`;
+        insertVersion.run(versionId, row.segment_id, row.project_id, versionNumber, repaired, row.model,
+          row.provider_profile_id, TRANSLATION_PROMPT_VERSION, row.context_manifest_json || safeJson({}), timestamp);
+        cloneDependency.run(`dependency-${randomUUID()}`, versionId, timestamp, row.version_id);
+        const remainingIssues = validateTranslationCandidate(row.source_text, repaired);
+        const nextStatus = remainingIssues.length ? 'needs-human' : row.status;
+        this.#database.prepare('UPDATE translation_segments SET selected_version_id = ?, status = ?, updated_at = ? WHERE segment_id = ?')
+          .run(versionId, nextStatus, timestamp, row.segment_id);
+        this.log(row.project_id, null, row.segment_id, 'deterministic-quote-repair',
+          '升级后检测到模型擅自补齐跨段引号；已创建新版本并恢复原文的单边引号结构。',
+          { previousVersionId: row.version_id, versionId, remainingIssues: remainingIssues.map((issue) => issue.message) });
+      });
+      return repairs.length;
+    });
+  }
+
   workbench(projectId: string, chapterId: string, offset: number, limit: number): WorkbenchPage {
     const safeOffset = Math.max(0, Math.floor(offset));
     const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
@@ -516,7 +574,7 @@ export class WorkflowRepository {
           model, provider_profile_id, prompt_version, context_manifest_json, response_id, finish_reason,
           input_tokens, output_tokens, cached_input_tokens, reasoning_tokens, elapsed_ms, created_at)
         VALUES(?, ?, ?, ?, 'manual', ?, NULL, NULL, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?)
-      `).run(versionId, segment.segmentId, segment.projectId, versionNumber, text, PROMPT_VERSION, safeJson({ humanEdit: true }), timestamp);
+      `).run(versionId, segment.segmentId, segment.projectId, versionNumber, text, TRANSLATION_PROMPT_VERSION, safeJson({ humanEdit: true }), timestamp);
       this.#database.prepare('UPDATE translation_segments SET selected_version_id = ?, status = ?, updated_at = ? WHERE segment_id = ?').run(versionId, status, timestamp, segment.segmentId);
       this.log(segment.projectId, null, segment.segmentId, 'manual-edit', '人工编辑保存为新版本。', { versionId, status });
       return versionId;
@@ -1188,7 +1246,7 @@ export class WorkflowRepository {
           input_tokens, output_tokens, cached_input_tokens, reasoning_tokens, elapsed_ms, created_at)
         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(versionId, segment.segmentId, segment.projectId, versionNumber, stage, text, model, profileId,
-        PROMPT_VERSION, safeJson(contextManifest), response.responseId, response.finishReason,
+        TRANSLATION_PROMPT_VERSION, safeJson(contextManifest), response.responseId, response.finishReason,
         response.inputTokens, response.outputTokens, response.cachedInputTokens, response.reasoningTokens, elapsedMs, timestamp);
       if (status !== null) this.#database.prepare('UPDATE translation_segments SET selected_version_id = ?, status = ?, updated_at = ? WHERE segment_id = ?')
         .run(versionId, status, timestamp, segment.segmentId);

@@ -14,7 +14,7 @@ import {
   semanticRoleSystemPrompt,
   translationSystemPrompt,
 } from './prompts.cjs';
-import { validateTranslationCandidate } from './translationValidation.cjs';
+import { undoAddedBoundaryQuoteCompletion, validateTranslationCandidate } from './translationValidation.cjs';
 import { WorkflowRepository } from './workflowRepository.cjs';
 import { buildFormalEpub, type FormalExportMode } from './formalEpubExport.cjs';
 import type { SegmentSemanticRoles } from './narrativeModels.cjs';
@@ -526,9 +526,15 @@ export class WorkflowService {
     try { fs.writeFileSync(this.#logFilePath, JSON.stringify(this.#recentLogs, null, 2), 'utf8'); } catch { /* ignore */ }
     this.#repository.close();
   }
-  overview(projectId: string) { return this.#repository.overview(projectId); }
+  overview(projectId: string) {
+    const repaired = this.#repository.repairSelectedBoundaryQuoteCompletions(projectId);
+    if (repaired) this.#emitLog('info', 'system', `升级完整性检查已修复 ${repaired} 个被模型擅自补齐的跨段引号。`);
+    return this.#repository.overview(projectId);
+  }
   workbench(projectId: string, chapterId: string, offset = 0, limit = 60) {
     this.#repository.initializeSegments(projectId);
+    const repaired = this.#repository.repairSelectedBoundaryQuoteCompletions(projectId, chapterId);
+    if (repaired) this.#emitLog('info', 'system', `本章已修复 ${repaired} 个被模型擅自补齐的跨段引号。`);
     return this.#repository.workbench(projectId, chapterId, offset, limit);
   }
   versions(segmentId: string) { return this.#repository.versions(segmentId); }
@@ -548,7 +554,10 @@ export class WorkflowService {
       stringValue(input.preservationStrategy), stringValue(input.note), Boolean(input.lock));
   }
   reviews(projectId: string) { return this.#repository.reviews(projectId); }
-  assertFinalExportReady(projectId: string) { this.#repository.assertFormalExportReady(projectId); }
+  assertFinalExportReady(projectId: string) {
+    this.#repository.repairSelectedBoundaryQuoteCompletions(projectId);
+    this.#repository.assertFormalExportReady(projectId);
+  }
   async buildFinalEpub(projectId: string, mode: FormalExportMode) { return buildFormalEpub(this.#repository.formalExportData(projectId), mode); }
   projectTitle(projectId: string) { return this.#repository.projectTitle(projectId); }
 
@@ -987,6 +996,7 @@ ${JSON.stringify(globalCtx.styleDecisions, null, 2)}
     const profile = this.#providerSettings.getProfile(snapshot.activeProfileId);
     const key = this.#providerSettings.getApiKey(snapshot.activeProfileId);
     if (!profile || !key) throw new Error('请先在“设置 → 模型与接口”保存并启用可用服务。');
+    this.#repository.repairSelectedBoundaryQuoteCompletions(input.projectId);
     const task = this.#repository.createTask(input, profile.profileId);
     void this.#run(task.taskId);
     return task;
@@ -1528,7 +1538,9 @@ ${JSON.stringify(globalCtx.styleDecisions, null, 2)}
       initial.forEach((text, id) => candidates.set(id, text));
 
       for (const segment of segments) {
-        let candidate = candidates.get(segment.segmentId)!;
+        const rawCandidate = candidates.get(segment.segmentId)!;
+        let candidate = undoAddedBoundaryQuoteCompletion(segment.sourceText, rawCandidate);
+        if (candidate !== rawCandidate) this.#emitLog('info', 'translate', `段落 #${segment.segmentOrdinal} 检测到模型擅自补齐跨段引号，已按原文恢复为单边引号。`);
         let issues = validateTranslationCandidate(segment.sourceText, candidate);
         this.#repository.saveTranslationVersion(segment, candidate, 'initial', profile.profileId, profile.model, context.manifest, sourceResponse, sourceElapsed, issues.length ? null : 'reviewing', semanticRoles);
         for (let attempt = 0; issues.length && attempt < 2; attempt += 1) {
@@ -1543,7 +1555,9 @@ ${JSON.stringify(globalCtx.styleDecisions, null, 2)}
             sourceChars: segment.sourceText.length,
           });
           inputTokens += tokenValue(repair.inputTokens); outputTokens += tokenValue(repair.outputTokens);
-          candidate = translationMap(repair.text, [segment.segmentId]).get(segment.segmentId)!;
+          const rawRepairCandidate = translationMap(repair.text, [segment.segmentId]).get(segment.segmentId)!;
+          candidate = undoAddedBoundaryQuoteCompletion(segment.sourceText, rawRepairCandidate);
+          if (candidate !== rawRepairCandidate) this.#emitLog('info', 'translate', `段落 #${segment.segmentOrdinal} 的自修复结果再次补齐跨段引号，已按原文恢复。`);
           issues = validateTranslationCandidate(segment.sourceText, candidate);
           this.#repository.saveTranslationVersion(segment, candidate, 'self-repair', profile.profileId, profile.model, context.manifest, repair, Date.now() - repairStarted, issues.length ? null : 'reviewing', semanticRoles);
         }
@@ -1590,13 +1604,15 @@ ${JSON.stringify(globalCtx.styleDecisions, null, 2)}
         this.#repository.setSegmentStatus(segment.segmentId, 'approved');
         this.#repository.closeSegmentReviews(segment.segmentId, 'auto-resolved', '新候选已经通过确定性检查与独立复核。');
       } else if (decision.verdict === 'revise' && decision.revisedTranslation) {
-        const issues = validateTranslationCandidate(segment.sourceText, decision.revisedTranslation);
+        const reviewedCandidate = undoAddedBoundaryQuoteCompletion(segment.sourceText, decision.revisedTranslation);
+        if (reviewedCandidate !== decision.revisedTranslation) this.#emitLog('info', 'review', `段落 #${segment.segmentOrdinal} 的复核稿补齐了跨段引号，已按原文恢复。`);
+        const issues = validateTranslationCandidate(segment.sourceText, reviewedCandidate);
         if (issues.length) {
           warning = true;
           this.#repository.setSegmentStatus(segment.segmentId, 'needs-human');
-          this.#repository.createReviewItem(segment, 'hard-rule', 'must-human', '复核候选违反硬规则', issues.map((issue) => issue.message).join('；'), { decision }, decision.revisedTranslation);
+          this.#repository.createReviewItem(segment, 'hard-rule', 'must-human', '复核候选违反硬规则', issues.map((issue) => issue.message).join('；'), { decision }, reviewedCandidate);
         } else {
-          this.#repository.saveTranslationVersion(segment, decision.revisedTranslation, 'independent-review', profile.profileId, profile.reviewModel, context.manifest, reviewResponse, reviewElapsed, 'approved', semanticRoles);
+          this.#repository.saveTranslationVersion(segment, reviewedCandidate, 'independent-review', profile.profileId, profile.reviewModel, context.manifest, reviewResponse, reviewElapsed, 'approved', semanticRoles);
           this.#repository.closeSegmentReviews(segment.segmentId, 'auto-resolved', '独立复核修订稿已经重新通过全部硬规则。');
         }
       } else {

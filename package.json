@@ -1,7 +1,7 @@
 {
   "name": "kitauji-polishing-workshop-v2",
   "private": true,
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "北宇治润色工坊：带长程作品记忆、复核与 EPUB 成品导出的日中小说翻译桌面软件",
   "main": "dist/electron/main.cjs",
   "type": "module",

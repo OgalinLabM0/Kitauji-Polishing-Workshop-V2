@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateTranslationCandidate } from './translationValidation.cjs';
+import { undoAddedBoundaryQuoteCompletion, validateTranslationCandidate } from './translationValidation.cjs';
 
 describe('translation hard gate', () => {
   it('blocks added gender, plural, honorific and changed Arabic numbers', () => {
@@ -17,6 +17,20 @@ describe('translation hard gate', () => {
   it('keeps matching Japanese quote types', () => {
     expect(validateTranslationCandidate('「待て！」', '“等等！”').map((issue) => issue.code)).toContain('quote');
     expect(validateTranslationCandidate('「待て！」', '「等等！」')).toEqual([]);
+  });
+
+  it('treats an unpaired opening quote as intentional cross-paragraph structure', () => {
+    const source = '“戦争から煌きと魔術的な美がついに奪い取られてしまった。';
+    const completed = '“战争的光芒与魔术般的美，终于被夺走了。”';
+    expect(validateTranslationCandidate(source, completed).map((issue) => issue.code)).toContain('quote');
+    expect(validateTranslationCandidate(source, '“战争的光芒与魔术般的美，终于被夺走了。')).toEqual([]);
+    expect(undoAddedBoundaryQuoteCompletion(source, completed)).toBe('“战争的光芒与魔术般的美，终于被夺走了。');
+  });
+
+  it('undoes only a model-added boundary counterpart and keeps balanced quotes untouched', () => {
+    expect(undoAddedBoundaryQuoteCompletion('最后一段。”', '“最后一段。”')).toBe('最后一段。”');
+    expect(undoAddedBoundaryQuoteCompletion('“完整引语。”', '“完整引语。”')).toBe('“完整引语。”');
+    expect(validateTranslationCandidate('【警告】', '警告').map((issue) => issue.code)).toContain('quote');
   });
 
   it('does not mistake ordinary Chinese compounds or in-story wording for model pollution', () => {

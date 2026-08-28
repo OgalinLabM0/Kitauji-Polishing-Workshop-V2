@@ -119,4 +119,42 @@ describe('workflow repository', () => {
     expect((verifiedDatabase.prepare('SELECT count(*) AS count FROM narrative_claims').get() as { count: number }).count).toBeGreaterThan(0);
     verifiedDatabase.close();
   });
+
+  it('repairs already-approved model completions of cross-paragraph quotes as a new version', () => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), 'kitauji-quote-repair-'));
+    directories.push(directory);
+    const databasePath = path.join(directory, 'project.sqlite');
+    const sourceBytes = new Uint8Array(Buffer.from('序章\n“戦争から煌きと魔術的な美が奪われた。', 'utf8'));
+    const parsed = parseTxtDocument(sourceBytes);
+    const projectId = 'project-quote-repair-12345678';
+    const database = new ProjectDatabase(databasePath);
+    database.persistTxtProject({
+      project: {
+        projectId, title: '跨段引号测试', sourcePath: 'D:\\跨段引号测试.txt', sourceFormat: 'txt',
+        sourceEncoding: parsed.encoding, contentMode: 'japanese', sourceHash: 'e'.repeat(64),
+        sourceSizeBytes: sourceBytes.length, chapterCount: parsed.chapters.length,
+        paragraphCount: parsed.paragraphCount, characterCount: parsed.characterCount,
+        importedAt: '2026-08-28T00:00:00.000Z', updatedAt: '2026-08-28T00:00:00.000Z', lastOpenedAt: '2026-08-28T00:00:00.000Z',
+      },
+      originalBytes: sourceBytes, decodedText: parsed.text, newline: parsed.newline, chapters: parsed.chapters,
+    });
+    database.close();
+
+    const repository = new WorkflowRepository(databasePath);
+    repository.initializeSegments(projectId);
+    const lookup = new DatabaseSync(databasePath);
+    const chapterId = (lookup.prepare('SELECT chapter_id FROM translation_segments WHERE project_id = ? ORDER BY chapter_ordinal LIMIT 1')
+      .get(projectId) as { chapter_id: string }).chapter_id;
+    lookup.close();
+    const segment = repository.workbench(projectId, chapterId, 0, 20).segments.find((item) => item.sourceText.startsWith('“'))!;
+    repository.saveManualVersion(repository.getSegment(segment.segmentId)!, '“战争的光芒与魔术般的美被夺走了。”', 'approved');
+
+    expect(repository.repairSelectedBoundaryQuoteCompletions(projectId)).toBe(1);
+    const repaired = repository.workbench(projectId, chapterId, 0, 20).segments.find((item) => item.segmentId === segment.segmentId)!;
+    expect(repaired.selectedTranslation).toBe('“战争的光芒与魔术般的美被夺走了。');
+    expect(repaired.status).toBe('approved');
+    expect(repository.versions(segment.segmentId)[0]).toMatchObject({ stage: 'self-repair', selected: true });
+    expect(repository.repairSelectedBoundaryQuoteCompletions(projectId)).toBe(0);
+    repository.close();
+  });
 });
