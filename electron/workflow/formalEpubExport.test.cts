@@ -33,6 +33,7 @@ describe('formal EPUB export', () => {
 
     const repository = new WorkflowRepository(databasePath);
     repository.initializeSegments(projectId);
+    expect(() => repository.assertFormalExportReady(projectId)).toThrow(/尚未成为通过复核的成稿/u);
     for (const chapter of ['project-1234567890abcdef12345678:c00001', 'project-1234567890abcdef12345678:c00002']) {
       const page = repository.workbench(projectId, chapter, 0, 20);
       page.segments.forEach((item) => {
@@ -43,6 +44,7 @@ describe('formal EPUB export', () => {
     repository.importGlossary(projectId, [{ sourceTerm: '関', translatedTerm: '关', kind: 'character', note: '', reading: 'せき' }], true);
     const glossary = repository.glossary(projectId)[0];
     repository.updateGlossary(glossary.glossaryId, '关', 'locked', '', '角色名“关”的首次出场说明。');
+    expect(() => repository.assertFormalExportReady(projectId)).not.toThrow();
     const data = repository.formalExportData(projectId);
     const chinese = await buildFormalEpub(data, 'cn-only');
     const bilingual = await buildFormalEpub(data, 'jp-cn');

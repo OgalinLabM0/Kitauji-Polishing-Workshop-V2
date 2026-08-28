@@ -1,21 +1,16 @@
 import { useState } from 'react';
 import {
-  BookOpen,
   Check,
   CheckCircle2,
   Download,
-  FileCode,
   FileOutput,
-  FileText,
-  FolderOpen,
   Info,
   Languages,
-  ShieldCheck,
-  Sparkles,
 } from 'lucide-react';
 import type { ProjectLibrary } from '../projects/useProjectLibrary';
 import { useWorkflowOverview } from '../workflow/useWorkflowOverview';
 import { DomainAgentDrawer, DomainAgentTriggerButton } from '../agent/DomainAgentDrawer';
+import { getExportReadiness } from './exportReadiness';
 import '../../styles/export.css';
 
 type Mode = 'jp-cn' | 'cn-jp' | 'cn-only';
@@ -63,27 +58,30 @@ export const ExportCenter = ({ library }: { readonly library: ProjectLibrary }) 
   const [mode, setMode] = useState<Mode>('cn-only');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [outputPath, setOutputPath] = useState<string | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
 
   const counts = workflow.overview?.segmentCounts ?? {};
-  const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
-  const approved = counts.approved ?? 0;
-  const openReviews = workflow.overview?.openReviewCount ?? 0;
-  const percentage = total > 0 ? Math.round((approved / total) * 100) : 0;
-  const isReady = total > 0 && approved === total && openReviews === 0;
+  const { total, approved, remaining, openReviewCount: openReviews, percentage, isReady, reason } =
+    getExportReadiness({ segmentCounts: counts, openReviewCount: workflow.overview?.openReviewCount ?? 0 });
 
   if (!project) return null;
 
   const exportNow = async () => {
     if (!api) return;
+    if (!isReady) {
+      setError(reason ?? '当前项目尚未达到正式导出条件。');
+      return;
+    }
     setBusy(true);
     setResult(null);
+    setError(null);
     setOutputPath(null);
     try {
       const output = await api.exportFinal(project.project.projectId, mode);
       if (output.status === 'error') {
-        setResult(output.message);
+        setError(output.message);
       } else if (output.status === 'exported') {
         setOutputPath(output.outputPath);
         setResult(
@@ -132,7 +130,7 @@ export const ExportCenter = ({ library }: { readonly library: ProjectLibrary }) 
           </div>
           <div className="readiness-counts-row">
             <span>已定稿: {approved.toLocaleString()} 段</span>
-            <span>待润色: {(total - approved).toLocaleString()} 段</span>
+            <span>待润色: {remaining.toLocaleString()} 段</span>
             <span className={openReviews > 0 ? 'count-warning' : 'count-success'}>
               待复核: {openReviews} 项
             </span>
@@ -214,17 +212,28 @@ export const ExportCenter = ({ library }: { readonly library: ProjectLibrary }) 
         </div>
       )}
 
+      {error && (
+        <div className="export-result-card export-result-error" role="alert">
+          <div className="result-header">
+            <Info size={18} />
+            <strong>{error}</strong>
+          </div>
+        </div>
+      )}
+
       {/* 5. Primary Action Area */}
       <footer className="export-footer-actions">
         <button
           type="button"
           className="export-execute-btn"
-          disabled={busy}
+          disabled={busy || !isReady}
+          title={!isReady ? reason ?? undefined : undefined}
           onClick={() => void exportNow()}
         >
           <Download size={18} />
-          <span>{busy ? '正在封装并校验 EPUB 成书…' : '一键生成并导出正式书籍'}</span>
+          <span>{busy ? '正在封装并校验 EPUB 成书…' : !isReady ? '达到 100% 定稿后可导出' : '一键生成并导出正式书籍'}</span>
         </button>
+        {!isReady && <p className="export-blocked-note">{reason}</p>}
         <p className="export-tip-note">
           导出的 EPUB 完全兼容 Apple Books、微信读书、Calibre、Kobo、Kindle 及各大主流墨水屏阅读器。
         </p>

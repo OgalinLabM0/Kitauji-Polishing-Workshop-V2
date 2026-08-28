@@ -438,7 +438,7 @@ export class WorkflowRepository {
     const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
     const total = (this.#database.prepare('SELECT count(*) AS count FROM translation_segments WHERE project_id = ? AND chapter_id = ?').get(projectId, chapterId) as { count: number }).count;
     const rows = this.#database.prepare(`
-      SELECT s.segment_id, s.chapter_id, s.chapter_ordinal, s.segment_ordinal, s.source_block_id, s.source_text,
+      SELECT s.segment_id, s.chapter_id, s.chapter_ordinal, s.segment_ordinal, s.source_block_id, s.target_block_id, s.source_text,
         s.original_translation, s.status, v.text AS selected_translation,
         COALESCE(b.tag_name, CASE WHEN s.source_block_id LIKE '%:title' THEN 'h1' ELSE 'p' END) AS tag_name,
         (SELECT count(*) FROM translation_versions vv WHERE vv.segment_id = s.segment_id) AS version_count,
@@ -449,7 +449,7 @@ export class WorkflowRepository {
       WHERE s.project_id = ? AND s.chapter_id = ? ORDER BY s.segment_ordinal LIMIT ? OFFSET ?
     `).all(projectId, chapterId, safeLimit, safeOffset) as unknown as Array<{
       segment_id: string; chapter_id: string; chapter_ordinal: number; segment_ordinal: number;
-      source_block_id: string; source_text: string; original_translation: string | null; status: string; selected_translation: string | null;
+      source_block_id: string; target_block_id: string | null; source_text: string; original_translation: string | null; status: string; selected_translation: string | null;
       tag_name: string; version_count: number; open_review_count: number;
     }>;
     return {
@@ -457,6 +457,7 @@ export class WorkflowRepository {
       segments: rows.map((row) => ({
         segmentId: row.segment_id, chapterId: row.chapter_id, chapterOrdinal: row.chapter_ordinal,
         segmentOrdinal: row.segment_ordinal, sourceBlockId: row.source_block_id,
+        targetBlockId: row.target_block_id,
         tagName: row.tag_name,
         isTitle: row.source_block_id.endsWith(':title') || /^h[1-6]$/i.test(row.tag_name),
         sourceText: row.source_text, originalTranslation: row.original_translation,
@@ -779,18 +780,24 @@ export class WorkflowRepository {
     });
   }
 
+  assertFormalExportReady(projectId: string) {
+    const exists = this.#database.prepare('SELECT 1 AS ok FROM projects WHERE project_id = ?').get(projectId) as { ok: number } | undefined;
+    if (!exists) throw new Error('作品不存在。');
+    const counts = this.#database.prepare(`SELECT count(*) AS total, sum(CASE WHEN status = 'approved' AND selected_version_id IS NOT NULL THEN 1 ELSE 0 END) AS approved FROM translation_segments WHERE project_id = ?`).get(projectId) as { total: number; approved: number };
+    if (!counts.total) throw new Error('还没有翻译段落。请先完成全书预读和翻译。');
+    if (counts.approved !== counts.total) throw new Error(`成品导出已阻止：${counts.total - counts.approved} 个段落尚未成为通过复核的成稿。`);
+    const openReviews = (this.#database.prepare(`SELECT count(*) AS count FROM review_items WHERE project_id = ? AND status = 'open'`).get(projectId) as { count: number }).count;
+    if (openReviews) throw new Error(`成品导出已阻止：还有 ${openReviews} 项复核没有裁定。`);
+  }
+
   formalExportData(projectId: string) {
+    this.assertFormalExportReady(projectId);
     const project = this.#database.prepare(`
       SELECT p.title, p.source_format, p.content_mode, p.source_hash,
         e.opf_path, e.navigation_path
       FROM projects p LEFT JOIN epub_documents e ON e.project_id = p.project_id WHERE p.project_id = ?
     `).get(projectId) as { title: string; source_format: 'txt' | 'epub'; content_mode: string; source_hash: string; opf_path: string | null; navigation_path: string | null } | undefined;
     if (!project) throw new Error('作品不存在。');
-    const counts = this.#database.prepare(`SELECT count(*) AS total, sum(CASE WHEN status = 'approved' AND selected_version_id IS NOT NULL THEN 1 ELSE 0 END) AS approved FROM translation_segments WHERE project_id = ?`).get(projectId) as { total: number; approved: number };
-    if (!counts.total) throw new Error('还没有翻译段落。请先完成全书预读和翻译。');
-    if (counts.approved !== counts.total) throw new Error(`成品导出已阻止：${counts.total - counts.approved} 个段落尚未成为通过复核的成稿。`);
-    const openReviews = (this.#database.prepare(`SELECT count(*) AS count FROM review_items WHERE project_id = ? AND status = 'open'`).get(projectId) as { count: number }).count;
-    if (openReviews) throw new Error(`成品导出已阻止：还有 ${openReviews} 项复核没有裁定。`);
     const annotationCandidates = this.#database.prepare(`
       SELECT glossary_id, source_term, epub_note FROM glossary_entries
       WHERE project_id = ? AND status IN ('confirmed', 'locked') AND trim(epub_note) <> ''

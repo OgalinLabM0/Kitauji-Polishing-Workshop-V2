@@ -159,6 +159,8 @@ export const registerWorkflowIpc = (service: WorkflowService, getMainWindow: () 
     const mainWindow = getMainWindow();
     if (!mainWindow) return { status: 'error', message: '主窗口尚未就绪。' };
     try {
+      // Perform an authoritative, cheap readiness check before showing a save dialog.
+      service.assertFinalExportReady(String(projectId));
       const title = service.projectTitle(String(projectId));
       const suffix = mode === 'cn-only' ? 'SC' : mode === 'cn-jp' ? 'SC&JP' : 'JP&SC';
       const selection = await dialog.showSaveDialog(mainWindow, {

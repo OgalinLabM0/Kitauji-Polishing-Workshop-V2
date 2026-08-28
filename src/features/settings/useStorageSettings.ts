@@ -7,7 +7,7 @@ export const useStorageSettings = () => {
   const api = window.kitaujiDesktop?.storage;
   const [info, setInfo] = useState<StorageInfo | null>(null);
   const [loading, setLoading] = useState(Boolean(api));
-  const [busy, setBusy] = useState<StorageDirectoryKind | 'clear' | 'backup' | 'restore' | 'restart' | null>(null);
+  const [busy, setBusy] = useState<StorageDirectoryKind | 'clear' | 'backup' | 'restore' | 'restart' | 'factory-reset' | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -134,5 +134,22 @@ export const useStorageSettings = () => {
     catch (reason) { setError(readableError(reason)); setBusy(null); }
   }, [api, busy]);
 
-  return useMemo(() => ({ available: Boolean(api), info, loading, busy, notice, error, choose, reset, clearCache, backupDatabase, restoreDatabase, restartForDatabaseMove }), [api, info, loading, busy, notice, error, choose, reset, clearCache, backupDatabase, restoreDatabase, restartForDatabaseMove]);
+  const factoryReset = useCallback(async () => {
+    if (!api || busy) return;
+    setBusy('factory-reset');
+    setNotice(null);
+    setError(null);
+    try {
+      const result = await api.factoryReset();
+      if (result.status === 'error') {
+        setError(result.message);
+        setBusy(null);
+      }
+    } catch (reason) {
+      setError(readableError(reason));
+      setBusy(null);
+    }
+  }, [api, busy]);
+
+  return useMemo(() => ({ available: Boolean(api), info, loading, busy, notice, error, choose, reset, clearCache, backupDatabase, restoreDatabase, restartForDatabaseMove, factoryReset }), [api, info, loading, busy, notice, error, choose, reset, clearCache, backupDatabase, restoreDatabase, restartForDatabaseMove, factoryReset]);
 };

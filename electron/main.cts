@@ -5,6 +5,7 @@ import { registerProjectIpc } from './projects/projectIpc.cjs';
 import { ProjectService } from './projects/projectService.cjs';
 import { StorageManager } from './storage/storageManager.cjs';
 import { registerStorageIpc } from './storage/storageIpc.cjs';
+import { applyPendingFactoryReset } from './storage/factoryReset.cjs';
 import { ProviderSettingsStore } from './providers/providerSettings.cjs';
 import { ProviderService } from './providers/providerService.cjs';
 import { registerProviderIpc } from './providers/providerIpc.cjs';
@@ -178,7 +179,10 @@ app.whenReady().then(async () => {
     callback(false);
   });
 
-  const providerService = new ProviderService(new ProviderSettingsStore(app.getPath('userData'), safeStorage));
+  const userDataDirectory = app.getPath('userData');
+  const storageManager = new StorageManager(userDataDirectory, app.getPath('sessionData'));
+  const factoryResetDatabasePath = projectDatabaseArgument ? null : applyPendingFactoryReset(userDataDirectory, storageManager);
+  const providerService = new ProviderService(new ProviderSettingsStore(userDataDirectory, safeStorage));
   if (diagnoseProviderArgument) {
     const diagnosis = await providerService.diagnose(diagnoseProviderArgument);
     const diagnosisText = `${JSON.stringify(diagnosis, null, 2)}\n`;
@@ -187,13 +191,12 @@ app.whenReady().then(async () => {
     app.quit();
     return;
   }
-  const storageManager = new StorageManager(app.getPath('userData'), app.getPath('sessionData'));
-  const movedDatabasePath = projectDatabaseArgument
+  const movedDatabasePath = factoryResetDatabasePath ?? (projectDatabaseArgument
     ? path.resolve(projectDatabaseArgument)
-    : await storageManager.applyPendingDatabaseMove();
-  const databasePath = projectDatabaseArgument
+    : await storageManager.applyPendingDatabaseMove());
+  const databasePath = factoryResetDatabasePath ?? (projectDatabaseArgument
     ? movedDatabasePath
-    : await storageManager.applyPendingDatabaseRestore(movedDatabasePath);
+    : await storageManager.applyPendingDatabaseRestore(movedDatabasePath));
   projectService = new ProjectService(databasePath, storageManager.cacheDirectory);
   registerProjectIpc(projectService, () => mainWindow, storageManager);
   registerStorageIpc(storageManager, databasePath, projectService, () => mainWindow);

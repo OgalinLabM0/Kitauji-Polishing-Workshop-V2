@@ -38,6 +38,10 @@ export type DatabaseRestoreResult =
   | { readonly status: 'restart-required'; readonly sourceFileName: string; readonly schemaVersion: number; readonly projectCount: number; readonly info: StorageInfo }
   | { readonly status: 'error'; readonly message: string };
 
+export type FactoryResetResult =
+  | { readonly status: 'restart-required' }
+  | { readonly status: 'error'; readonly message: string };
+
 export interface StorageDesktopApi {
   info(): Promise<StorageInfo>;
   chooseDirectory(kind: StorageDirectoryKind): Promise<ChooseStorageDirectoryResult>;
@@ -46,4 +50,5 @@ export interface StorageDesktopApi {
   backupDatabase(): Promise<DatabaseBackupResult>;
   restoreDatabase(): Promise<DatabaseRestoreResult>;
   restartForDatabaseMove(): Promise<void>;
+  factoryReset(): Promise<FactoryResetResult>;
 }

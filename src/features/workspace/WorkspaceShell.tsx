@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   BookMarked,
   BookOpen,
-  BookOpenText,
   Database,
   FileOutput,
   Languages,
@@ -15,7 +14,6 @@ import {
   ShieldCheck,
   Users,
 } from 'lucide-react';
-import { ChapterReader } from '../chapters/ChapterReader';
 import { ProjectGlossary } from '../glossary/ProjectGlossary';
 import { CharacterRelations } from '../knowledge/CharacterRelations';
 import { MemoryLedger } from '../knowledge/MemoryLedger';

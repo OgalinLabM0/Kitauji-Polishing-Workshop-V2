@@ -34,6 +34,14 @@ interface PersistedProviderSecrets {
 const SETTINGS_FILE = 'provider-settings.json';
 const SECRETS_FILE = 'provider-secrets.bin';
 
+export const resetPersistedProviderSettings = (userDataDirectory: string) => {
+  for (const fileName of [SETTINGS_FILE, SECRETS_FILE]) {
+    const filePath = path.join(userDataDirectory, fileName);
+    rmSync(filePath, { force: true });
+    rmSync(`${filePath}.bak`, { force: true });
+  }
+};
+
 const defaultProfiles = (): readonly ProviderProfile[] => [
   {
     profileId: 'deepseek-official', name: 'DeepSeek 官方', kind: 'deepseek',

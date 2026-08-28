@@ -363,6 +363,19 @@ export class StorageManager {
       return { status: 'error', message: safeMessage(error) };
     }
   }
+
+  resetForFactoryInitialization(activeDatabasePath: string) {
+    const oldCacheDirectory = this.cacheDirectory;
+    const cacheResult = this.clearCache(activeDatabasePath);
+    if (cacheResult.status === 'error' && existsSync(oldCacheDirectory)) {
+      throw new Error(`无法安全清理正文缓存：${cacheResult.message}`);
+    }
+    rmSync(this.#pendingRestorePath, { force: true });
+    rmSync(`${this.#pendingRestorePath}-wal`, { force: true });
+    rmSync(`${this.#pendingRestorePath}-shm`, { force: true });
+    this.#save(emptyPreferences());
+    this.#ensureCacheDirectory();
+  }
 }
 
 export const storageConstantsForTest = { CACHE_FOLDER_NAME, CACHE_MARKER, DATABASE_FILE_NAME } as const;

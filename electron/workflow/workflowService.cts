@@ -548,6 +548,7 @@ export class WorkflowService {
       stringValue(input.preservationStrategy), stringValue(input.note), Boolean(input.lock));
   }
   reviews(projectId: string) { return this.#repository.reviews(projectId); }
+  assertFinalExportReady(projectId: string) { this.#repository.assertFormalExportReady(projectId); }
   async buildFinalEpub(projectId: string, mode: FormalExportMode) { return buildFormalEpub(this.#repository.formalExportData(projectId), mode); }
   projectTitle(projectId: string) { return this.#repository.projectTitle(projectId); }
 

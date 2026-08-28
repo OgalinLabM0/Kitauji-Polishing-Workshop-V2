@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('kitaujiDesktop', {
     backupDatabase: () => ipcRenderer.invoke('storage:backup-database'),
     restoreDatabase: () => ipcRenderer.invoke('storage:restore-database'),
     restartForDatabaseMove: () => ipcRenderer.invoke('storage:restart-for-database-move'),
+    factoryReset: () => ipcRenderer.invoke('storage:factory-reset'),
   }),
   providers: Object.freeze({
     get: () => ipcRenderer.invoke('providers:get'),

@@ -568,6 +568,23 @@
   background: var(--reader-bg);
 }
 
+.reader-content-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--reader-border);
+  background: #fff8e8;
+  color: #79561d;
+  font-size: calc(12px * var(--text-scale));
+  line-height: 1.55;
+}
+
+.reader-content-notice svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
 .calibre-render-frame {
   width: 100%;
   flex: 1;

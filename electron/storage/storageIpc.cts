@@ -1,8 +1,9 @@
-import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, session, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import type { ProjectService } from '../projects/projectService.cjs';
 import type { StorageDirectoryKind } from './models.cjs';
 import type { StorageManager } from './storageManager.cjs';
+import { stageFactoryReset } from './factoryReset.cjs';
 
 const STORAGE_CHANNELS = {
   info: 'storage:info',
@@ -12,6 +13,7 @@ const STORAGE_CHANNELS = {
   backupDatabase: 'storage:backup-database',
   restoreDatabase: 'storage:restore-database',
   restartForDatabaseMove: 'storage:restart-for-database-move',
+  factoryReset: 'storage:factory-reset',
 } as const;
 
 const assertTrustedSender = (event: IpcMainInvokeEvent, getMainWindow: () => BrowserWindow | null) => {
@@ -131,5 +133,17 @@ export const registerStorageIpc = (
     assertTrustedSender(event, getMainWindow);
     app.relaunch();
     app.quit();
+  });
+
+  ipcMain.handle(STORAGE_CHANNELS.factoryReset, async (event) => {
+    assertTrustedSender(event, getMainWindow);
+    stageFactoryReset(app.getPath('userData'), databasePath);
+    await Promise.all([
+      session.defaultSession.clearStorageData(),
+      session.defaultSession.clearCache(),
+    ]);
+    app.relaunch();
+    app.quit();
+    return { status: 'restart-required' } as const;
   });
 };

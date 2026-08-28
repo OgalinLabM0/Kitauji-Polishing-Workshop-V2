@@ -24,6 +24,19 @@
   --bg-sidebar: #fbfbfc;
   --bg-hover: #f5f6f8;
 
+  /* Compatibility aliases used by the editorial workspaces. Keep these opaque:
+     an undefined CSS variable invalidates the whole background declaration. */
+  --paper: #faf8f4;
+  --paper-card: #ffffff;
+  --paper-subtle: #f6f2eb;
+  --paper-warm: #fffaf0;
+  --uniform-dark: var(--uniform-deep);
+  --section-accent: var(--uniform);
+  --section-tint: var(--uniform-subtle);
+  --font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, serif;
+  --transition-fast: 120ms ease;
+  --transition-normal: 180ms ease;
+
   /* Ink & Typography */
   --ink: #242120;
   --ink-soft: #4a4542;
@@ -749,6 +762,50 @@ select:focus-visible {
   display: flex;
   flex-direction: column;
   animation: slideLeft 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glossary-agent-overlay.domain-agent-overlay {
+  z-index: 1500;
+  background: rgba(28, 24, 22, 0.72);
+  backdrop-filter: blur(2px);
+  justify-content: flex-end;
+  align-items: stretch;
+  padding: 0;
+}
+
+.glossary-agent-panel.domain-agent-panel {
+  width: min(620px, 96vw);
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  border: 0;
+  border-left: 1px solid #cfc4b5;
+  border-radius: 0;
+  background: #fffdf8;
+  color: #242120;
+  opacity: 1;
+  box-shadow: -18px 0 52px rgba(20, 17, 15, 0.34);
+}
+
+.domain-agent-panel .glossary-agent-header,
+.domain-agent-panel .glossary-agent-body,
+.domain-agent-panel .glossary-agent-chip,
+.domain-agent-panel .glossary-agent-input-wrap textarea,
+.domain-agent-panel .glossary-agent-result {
+  opacity: 1;
+}
+
+.domain-agent-panel .glossary-agent-header {
+  background: #f8f3e9;
+}
+
+.domain-agent-panel .glossary-agent-body {
+  background: #fffdf8;
+}
+
+.domain-agent-panel .glossary-agent-chip,
+.domain-agent-panel .glossary-agent-input-wrap textarea {
+  background: #ffffff;
 }
 
 @keyframes slideLeft {

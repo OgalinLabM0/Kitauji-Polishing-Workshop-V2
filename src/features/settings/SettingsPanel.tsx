@@ -1,14 +1,12 @@
 import { useState } from 'react';
 import {
-  Check,
+  AlertTriangle,
   Cpu,
   Database,
   Download,
   FolderInput,
-  FolderOutput,
   HardDrive,
   Minus,
-  Monitor,
   Plus,
   RotateCcw,
   Trash2,
@@ -48,6 +46,7 @@ export const SettingsPanel = ({ settings, onTextScaleChange, onReset }: Settings
     const p = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('panel');
     return p === 'storage' ? 'storage' : p === 'providers' ? 'providers' : 'display';
   });
+  const [factoryResetPhrase, setFactoryResetPhrase] = useState('');
 
   const storage = useStorageSettings();
   const info = storage.info;
@@ -170,6 +169,7 @@ export const SettingsPanel = ({ settings, onTextScaleChange, onReset }: Settings
                 </div>
               </div>
             </section>
+
           </div>
         ) : (
           /* File & Storage Tab */
@@ -294,6 +294,34 @@ export const SettingsPanel = ({ settings, onTextScaleChange, onReset }: Settings
                 </div>
               </header>
 
+              <div className="directory-row-item">
+                <div className="dir-info">
+                  <strong>当前缓存目录</strong>
+                  <p>{info ? `${info.cacheFileCount.toLocaleString()} 个可重建派生文件` : storage.loading ? '正在统计…' : '桌面存储服务不可用'}</p>
+                  <code>{info?.cacheDirectory ?? '—'}</code>
+                </div>
+                <div className="dir-actions">
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    disabled={!storage.available || Boolean(storage.busy)}
+                    onClick={() => void storage.choose('cache')}
+                  >
+                    {storage.busy === 'cache' ? '处理中…' : '更换缓存位置'}
+                  </button>
+                  {info?.customCacheDirectory && (
+                    <button
+                      type="button"
+                      className="danger-quiet-btn"
+                      disabled={Boolean(storage.busy)}
+                      onClick={() => void storage.reset('cache')}
+                    >
+                      恢复系统默认
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div className="cache-management-box">
                 <div className="cache-desc-text">
                   <p>
@@ -326,6 +354,34 @@ export const SettingsPanel = ({ settings, onTextScaleChange, onReset }: Settings
                 </div>
               </header>
 
+              <div className="directory-row-item database-location-row">
+                <div className="dir-info">
+                  <strong>当前项目数据库</strong>
+                  <p>保存原书副本、术语、长期记忆、译文版本、任务断点、复核与阅读位置</p>
+                  <code>{info?.databasePath ?? '—'}</code>
+                </div>
+                <div className="dir-actions">
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    disabled={!storage.available || Boolean(storage.busy)}
+                    onClick={() => void storage.choose('database')}
+                  >
+                    {storage.busy === 'database' ? '处理中…' : '迁移数据库位置'}
+                  </button>
+                  {(info?.customDatabaseDirectory || info?.pendingDatabasePath) && (
+                    <button
+                      type="button"
+                      className="danger-quiet-btn"
+                      disabled={Boolean(storage.busy)}
+                      onClick={() => void storage.reset('database')}
+                    >
+                      {info?.pendingDatabasePath && !info.customDatabaseDirectory ? '取消待迁移' : '迁回系统默认'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div className="db-backup-actions-bar">
                 <div className="db-backup-info">
                   <strong>整库备份导出与恢复 (.sqlite.bak)</strong>
@@ -351,6 +407,65 @@ export const SettingsPanel = ({ settings, onTextScaleChange, onReset }: Settings
                     <span>{storage.busy === 'restore' ? '正在恢复…' : '从备份恢复整库'}</span>
                   </button>
                 </div>
+              </div>
+
+              {info?.pendingDatabasePath && (
+                <div className="database-pending-box">
+                  <div><strong>等待重启迁移</strong><code>{info.pendingDatabasePath}</code><p>重启后先复制完整数据库，再核对完整性、schema 与项目数量；全部一致才切换。</p></div>
+                  <button type="button" className="primary-btn" disabled={Boolean(storage.busy)} onClick={() => void storage.restartForDatabaseMove()}>
+                    {storage.busy === 'restart' ? '正在重启…' : '立即重启并迁移'}
+                  </button>
+                </div>
+              )}
+              {info?.pendingDatabaseRestore && (
+                <div className="database-pending-box">
+                  <div><strong>等待重启恢复整库</strong><code>{info.pendingRestoreSourceName}</code><p>重启前会为当前库建立安全副本；恢复校验失败时仍使用当前数据库。</p></div>
+                  <button type="button" className="primary-btn" disabled={Boolean(storage.busy)} onClick={() => void storage.restartForDatabaseMove()}>
+                    {storage.busy === 'restart' ? '正在重启…' : '立即重启并恢复'}
+                  </button>
+                </div>
+              )}
+              {info?.databaseMoveError && <p className="database-operation-error"><strong>上次迁移未完成：</strong>{info.databaseMoveError} 软件仍在使用原数据库。</p>}
+              {info?.databaseRestoreError && <p className="database-operation-error"><strong>上次恢复未完成：</strong>{info.databaseRestoreError} 软件仍在使用恢复前数据库。</p>}
+              {info?.lastSafetyBackupPath && <p className="database-safety-path">最近一次恢复前安全副本：<code>{info.lastSafetyBackupPath}</code></p>}
+            </section>
+
+            <section className="settings-document-card settings-danger-card">
+              <header className="card-header danger-card-header">
+                <AlertTriangle size={18} />
+                <div>
+                  <h2>清空所有数据并初始化软件</h2>
+                  <p>用于彻底回到首次启动状态；操作将在重启时执行，无法撤销。</p>
+                </div>
+              </header>
+
+              <div className="factory-reset-box">
+                <p>
+                  将删除所有项目、原文副本、译文版本、术语/人物/事件记忆、任务与阅读进度、
+                  API 配置和密钥、界面偏好、运行日志、缓存及自动安全备份。
+                  <strong>不会删除你自行导出的 EPUB/TXT、手动导出的数据库备份或磁盘上的原始书籍文件。</strong>
+                </p>
+                <label>
+                  <span>输入“初始化”以解锁按钮</span>
+                  <input
+                    value={factoryResetPhrase}
+                    onChange={(event) => setFactoryResetPhrase(event.target.value)}
+                    placeholder="初始化"
+                    autoComplete="off"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="factory-reset-button"
+                  disabled={!storage.available || Boolean(storage.busy) || factoryResetPhrase !== '初始化'}
+                  onClick={() => {
+                    if (!window.confirm('最后确认：清空软件内的全部项目、译文、记忆、密钥和设置，并立即重启？')) return;
+                    void storage.factoryReset();
+                  }}
+                >
+                  <Trash2 size={14} />
+                  <span>{storage.busy === 'factory-reset' ? '正在安排初始化并重启…' : '清空所有数据并重启'}</span>
+                </button>
               </div>
             </section>
           </div>

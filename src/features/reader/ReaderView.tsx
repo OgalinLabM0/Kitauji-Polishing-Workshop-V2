@@ -4,28 +4,21 @@ import {
   ChevronLeft,
   ChevronRight,
   Columns2,
-  Download,
-  Eye,
   FileText,
-  HelpCircle,
+  Info,
   Image as ImageIcon,
   Languages,
-  LayoutGrid,
   List,
   Maximize2,
-  Menu,
   Minimize2,
   Minus,
-  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
-  RotateCcw,
   Search,
   Settings,
   Sliders,
   Sparkles,
-  Sun,
   Type,
   X,
 } from 'lucide-react';
@@ -39,6 +32,7 @@ import {
   type ReaderPreferences,
   type ReaderTheme,
 } from './useCalibreReader';
+import { mergeReaderSegments, readerModeNotice } from './readerContentPolicy';
 import '../../styles/reader.css';
 
 const DEFAULT_PREFERENCES: ReaderPreferences = {
@@ -100,6 +94,8 @@ export const ReaderView = ({ library }: { readonly library: ProjectLibrary }) =>
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tocSearch, setTocSearch] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [segmentLoadError, setSegmentLoadError] = useState<string | null>(null);
+  const [segmentsLoading, setSegmentsLoading] = useState(true);
 
   const chapter = chapters[chapterIndex] ?? null;
 
@@ -114,13 +110,50 @@ export const ReaderView = ({ library }: { readonly library: ProjectLibrary }) =>
 
   // Load segments for current chapter
   useEffect(() => {
-    if (!project || !chapter || !workflow) return;
+    if (!project || !chapter) {
+      setSegments([]);
+      setSegmentsLoading(false);
+      return;
+    }
     let isMounted = true;
 
-    void workflow.workbench(project.project.projectId, chapter.chapterId, 0, 1000).then((page) => {
-      if (isMounted) {
-        setSegments(page.segments);
+    setSegments([]);
+    setSegmentLoadError(null);
+    setSegmentsLoading(true);
+    void (async () => {
+      const collected: WorkbenchSegment[] = [];
+      if (workflow) {
+        let offset = 0;
+        let total = 1;
+        while (offset < total) {
+          const page = await workflow.workbench(project.project.projectId, chapter.chapterId, offset, 200);
+          collected.push(...page.segments);
+          total = page.total;
+          if (!page.segments.length) break;
+          offset += page.segments.length;
+        }
       }
+
+      if (projects) {
+        const blocks = [] as NonNullable<Awaited<ReturnType<typeof projects.readChapter>>>['blocks'][number][];
+        let offset = 0;
+        let total = 1;
+        while (offset < total) {
+          const page = await projects.readChapter(project.project.projectId, chapter.chapterId, offset, 200);
+          if (!page) break;
+          blocks.push(...page.blocks);
+          total = page.totalBlocks;
+          if (!page.blocks.length) break;
+          offset += page.blocks.length;
+        }
+        if (isMounted) setSegments(mergeReaderSegments(blocks, collected, chapter.chapterId, chapter.ordinal));
+      } else if (isMounted) {
+        setSegments(collected);
+      }
+    })().catch((reason) => {
+      if (isMounted) setSegmentLoadError(reason instanceof Error ? reason.message : '无法读取章节译文状态。');
+    }).finally(() => {
+      if (isMounted) setSegmentsLoading(false);
     });
 
     // Save reading position
@@ -137,11 +170,13 @@ export const ReaderView = ({ library }: { readonly library: ProjectLibrary }) =>
   const {
     chapterHtml,
     loading: chapterLoading,
+    renderError,
     gallery,
     lightboxImage,
     setLightboxImage,
     iframeRef,
   } = useCalibreReader(project, chapter, segments, preferences);
+  const modeNotice = readerModeNotice(segments, preferences.mode);
 
   // Filtered TOC Chapters
   const filteredChapters = useMemo(() => {
@@ -512,7 +547,13 @@ export const ReaderView = ({ library }: { readonly library: ProjectLibrary }) =>
 
         {/* Center Reading Container (Iframe Sandboxed) */}
         <main className="calibre-reading-container">
-          {chapterLoading ? (
+          {!segmentsLoading && (segmentLoadError || renderError || modeNotice) && (
+            <div className={`reader-content-notice ${segmentLoadError || renderError ? 'is-error' : ''}`} role="status">
+              <Info size={15} />
+              <span>{segmentLoadError || renderError || modeNotice}</span>
+            </div>
+          )}
+          {chapterLoading || segmentsLoading ? (
             <div className="reader-loading-card">
               <div className="reader-spinner" />
               <p>正在高保真渲染章节排版与原图插画…</p>
@@ -523,7 +564,7 @@ export const ReaderView = ({ library }: { readonly library: ProjectLibrary }) =>
               srcDoc={chapterHtml}
               className="calibre-render-frame"
               title="Calibre Reading Frame"
-              sandbox="allow-scripts allow-same-origin"
+              sandbox="allow-scripts"
             />
           )}
 

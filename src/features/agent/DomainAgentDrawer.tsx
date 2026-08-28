@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Bot,
   Sparkles,
@@ -112,6 +112,15 @@ export const DomainAgentDrawer: React.FC<DomainAgentDrawerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<DomainAgentResult | null>(null);
 
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !loading) onClose();
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [isOpen, loading, onClose]);
+
   if (!isOpen) return null;
 
   const config = DOMAIN_CONFIGS[domain];
@@ -172,8 +181,14 @@ export const DomainAgentDrawer: React.FC<DomainAgentDrawerProps> = ({
   };
 
   return (
-    <div className="glossary-agent-overlay" onClick={onClose}>
-      <div className="glossary-agent-panel" onClick={(e) => e.stopPropagation()}>
+    <div className="glossary-agent-overlay domain-agent-overlay" onClick={onClose}>
+      <div
+        className="glossary-agent-panel domain-agent-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label={config.title}
+        onClick={(e) => e.stopPropagation()}
+      >
         <header className="glossary-agent-header">
           <div className="glossary-agent-title">
             <div className="glossary-agent-icon">

@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import JSZip from 'jszip';
 import type { ProjectChapterSummary, ProjectSnapshot } from '../../core/projects/models';
 import type { WorkbenchSegment } from '../../core/workflow/models';
+import { readerSegmentPresentation, type ReaderMode } from './readerContentPolicy';
 
-export type ReaderMode = 'final' | 'bilingual' | 'source' | 'original';
+export type { ReaderMode } from './readerContentPolicy';
 export type ReaderLayout = 'scroll' | 'paginated';
 export type ReaderTheme = 'ivory' | 'white' | 'sepia' | 'dark' | 'oled';
 export type ReaderFontFamily = 'serif' | 'sans' | 'kaiti';
@@ -103,6 +104,7 @@ export function useCalibreReader(
   const [zip, setZip] = useState<JSZip | null>(null);
   const [loading, setLoading] = useState(false);
   const [chapterHtml, setChapterHtml] = useState<string>('');
+  const [renderError, setRenderError] = useState<string | null>(null);
   const [gallery, setGallery] = useState<readonly IllustrationItem[]>([]);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -174,6 +176,7 @@ export function useCalibreReader(
     setLoading(true);
 
     const render = async () => {
+      setRenderError(null);
       const desktopApi = window.kitaujiDesktop?.projects;
       const theme = THEME_STYLES[preferences.theme] || THEME_STYLES.ivory;
       const fontFamily = FONT_FAMILIES[preferences.fontFamily] || FONT_FAMILIES.serif;
@@ -183,14 +186,15 @@ export function useCalibreReader(
         // Build rich HTML from text segments
         const segHtml = segments
           .map((seg) => {
-            const polishText = seg.selectedTranslation || seg.sourceText;
+            const presentation = readerSegmentPresentation(seg, preferences.mode);
+            const polishText = presentation.primaryText;
             const isDialogue = /^[「『“【（＂"']/.test(polishText.trim());
             const indentStyle = preferences.indent && !isDialogue ? 'text-indent: 2em;' : 'text-indent: 0;';
 
             if (preferences.mode === 'bilingual') {
               return `
                 <div class="bilingual-card" style="margin-bottom: ${preferences.paragraphSpacing}em; background: ${theme.cardBg}; border: 1px solid ${theme.line}; border-radius: 8px; padding: 14px 18px;">
-                  <p class="target-p" style="margin: 0 0 6px; font-size: ${preferences.fontSize}px; line-height: ${preferences.lineHeight}; ${indentStyle} color: ${theme.text}; font-weight: 500;">${escapeHtml(polishText)}</p>
+                  <p class="target-p${presentation.missingTranslation ? ' missing-translation' : ''}" style="margin: 0 0 6px; font-size: ${preferences.fontSize}px; line-height: ${preferences.lineHeight}; ${indentStyle} color: ${presentation.missingTranslation ? theme.sub : theme.text}; font-weight: 500;">${escapeHtml(polishText)}</p>
                   <p class="source-p" style="margin: 0; font-size: ${Math.round(preferences.fontSize * 0.85)}px; line-height: ${preferences.lineHeight}; color: ${theme.sub}; font-style: normal;" lang="ja">${escapeHtml(seg.sourceText)}</p>
                 </div>
               `;
@@ -201,11 +205,11 @@ export function useCalibreReader(
             }
 
             if (preferences.mode === 'original') {
-              return `<p style="margin-bottom: ${preferences.paragraphSpacing}em; font-size: ${preferences.fontSize}px; line-height: ${preferences.lineHeight}; ${indentStyle} color: ${theme.text};">${escapeHtml(seg.originalTranslation || '〔无既有译文〕')}</p>`;
+              return `<p style="margin-bottom: ${preferences.paragraphSpacing}em; font-size: ${preferences.fontSize}px; line-height: ${preferences.lineHeight}; ${indentStyle} color: ${presentation.missingTranslation ? theme.sub : theme.text};">${escapeHtml(polishText)}</p>`;
             }
 
             // Default 'final'
-            return `<p style="margin-bottom: ${preferences.paragraphSpacing}em; font-size: ${preferences.fontSize}px; line-height: ${preferences.lineHeight}; ${indentStyle} color: ${theme.text};">${escapeHtml(polishText)}</p>`;
+            return `<p style="margin-bottom: ${preferences.paragraphSpacing}em; font-size: ${preferences.fontSize}px; line-height: ${preferences.lineHeight}; ${indentStyle} color: ${presentation.missingTranslation ? theme.sub : theme.text};">${escapeHtml(polishText)}</p>`;
           })
           .join('');
 
@@ -258,6 +262,26 @@ export function useCalibreReader(
           doc = parser.parseFromString(rawHtmlContent, 'text/html');
         }
 
+        // Imported book markup is content, not trusted application code.
+        Array.from(doc.querySelectorAll('script, iframe, frame, object, embed')).forEach((node) => node.remove());
+        Array.from(doc.querySelectorAll('base, meta[http-equiv="refresh"]')).forEach((node) => node.remove());
+        Array.from(doc.querySelectorAll('*')).forEach((element) => {
+          Array.from(element.attributes).forEach((attribute) => {
+            if (/^on/iu.test(attribute.name)) element.removeAttribute(attribute.name);
+          });
+        });
+        Array.from(doc.querySelectorAll('a[href], a[xlink\\:href]')).forEach((anchor) => {
+          for (const attributeName of ['href', 'xlink:href']) {
+            const value = anchor.getAttribute(attributeName)?.trim();
+            if (value && !value.startsWith('#')) anchor.removeAttribute(attributeName);
+          }
+        });
+        Array.from(doc.querySelectorAll('meta[http-equiv="Content-Security-Policy"]')).forEach((node) => node.remove());
+        const contentSecurityPolicy = doc.createElement('meta');
+        contentSecurityPolicy.setAttribute('http-equiv', 'Content-Security-Policy');
+        contentSecurityPolicy.setAttribute('content', "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'");
+        doc.head.prepend(contentSecurityPolicy);
+
         // Fetch blocks to map DOM paths
         if (desktopApi?.readChapter) {
           const content = await desktopApi.readChapter(
@@ -269,6 +293,25 @@ export function useCalibreReader(
 
           if (content && isMounted) {
             const segMap = new Map(segments.map((s) => [s.sourceBlockId, s]));
+            const targetBlockIds = new Set(segments.flatMap((segment) => segment.targetBlockId ? [segment.targetBlockId] : []));
+
+            // Hide existing Chinese partner blocks first. The selected mode below either
+            // composes an explicit bilingual pair or displays exactly one requested text.
+            for (const block of content.blocks) {
+              if (!targetBlockIds.has(block.blockId) || !block.domPath) continue;
+              try {
+                const targetNode = doc.evaluate(
+                  block.domPath,
+                  doc,
+                  null,
+                  XPathResult.FIRST_ORDERED_NODE_TYPE,
+                  null,
+                ).singleNodeValue as HTMLElement | null;
+                targetNode?.setAttribute('hidden', 'hidden');
+              } catch {
+                // Continue rendering other blocks when one imported XPath is malformed.
+              }
+            }
 
             for (const block of content.blocks) {
               const seg = segMap.get(block.blockId);
@@ -284,7 +327,8 @@ export function useCalibreReader(
                 ).singleNodeValue as HTMLElement | null;
 
                 if (node) {
-                  const polish = seg.selectedTranslation || seg.sourceText;
+                  const presentation = readerSegmentPresentation(seg, preferences.mode);
+                  const polish = presentation.primaryText;
                   const source = seg.sourceText;
                   const isDialogue = /^[「『“【（＂"']/.test(polish.trim());
                   const indentStyle = preferences.indent && !isDialogue ? 'text-indent: 2em;' : 'text-indent: 0;';
@@ -297,7 +341,7 @@ export function useCalibreReader(
                       `margin-bottom: ${preferences.paragraphSpacing}em; background: ${theme.cardBg}; border: 1px solid ${theme.line}; border-radius: 8px; padding: 12px 16px;`,
                     );
                     card.innerHTML = `
-                      <p class="target-text" style="margin: 0 0 5px; font-size: ${preferences.fontSize}px; line-height: ${preferences.lineHeight}; ${indentStyle} color: ${theme.text}; font-weight: 500;">${escapeHtml(polish)}</p>
+                      <p class="target-text${presentation.missingTranslation ? ' missing-translation' : ''}" style="margin: 0 0 5px; font-size: ${preferences.fontSize}px; line-height: ${preferences.lineHeight}; ${indentStyle} color: ${presentation.missingTranslation ? theme.sub : theme.text}; font-weight: 500;">${escapeHtml(polish)}</p>
                       <p class="source-text" style="margin: 0; font-size: ${Math.round(preferences.fontSize * 0.85)}px; line-height: ${preferences.lineHeight}; color: ${theme.sub};" lang="ja">${escapeHtml(source)}</p>
                     `;
                     node.parentNode?.replaceChild(card, node);
@@ -308,15 +352,15 @@ export function useCalibreReader(
                     node.style.marginBottom = `${preferences.paragraphSpacing}em`;
                     if (preferences.indent && !isDialogue) node.style.textIndent = '2em';
                   } else if (preferences.mode === 'original') {
-                    node.textContent = seg.originalTranslation || '〔无既有译文〕';
-                    node.style.color = theme.text;
+                    node.textContent = polish;
+                    node.style.color = presentation.missingTranslation ? theme.sub : theme.text;
                     node.style.lineHeight = String(preferences.lineHeight);
                     node.style.fontSize = `${preferences.fontSize}px`;
                     node.style.marginBottom = `${preferences.paragraphSpacing}em`;
                   } else {
                     // Final polished mode
                     node.textContent = polish;
-                    node.style.color = theme.text;
+                    node.style.color = presentation.missingTranslation ? theme.sub : theme.text;
                     node.style.lineHeight = String(preferences.lineHeight);
                     node.style.fontSize = `${preferences.fontSize}px`;
                     node.style.marginBottom = `${preferences.paragraphSpacing}em`;
@@ -416,7 +460,10 @@ export function useCalibreReader(
         }
       } catch (e) {
         console.error('Failed to parse and render chapter:', e);
-        if (isMounted) setLoading(false);
+        if (isMounted) {
+          setRenderError(e instanceof Error ? e.message : '章节排版渲染失败。');
+          setLoading(false);
+        }
       }
     };
 
@@ -440,8 +487,9 @@ export function useCalibreReader(
   // Handle Lightbox postMessage from iframe
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
-      if (e.data && e.data.type === 'CALIBRE_IMAGE_CLICK' && e.data.src) {
-        setLightboxImage(e.data.src);
+      if (e.source !== iframeRef.current?.contentWindow) return;
+      if (e.data && e.data.type === 'CALIBRE_IMAGE_CLICK' && typeof e.data.src === 'string') {
+        if (e.data.src.startsWith('data:image/')) setLightboxImage(e.data.src);
       }
     };
     window.addEventListener('message', onMessage);
@@ -450,6 +498,7 @@ export function useCalibreReader(
 
   return {
     chapterHtml,
+    renderError,
     loading,
     gallery,
     lightboxImage,
