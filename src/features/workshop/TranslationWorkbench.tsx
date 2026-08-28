@@ -32,6 +32,7 @@ import { useWorkflowOverview } from '../workflow/useWorkflowOverview';
 import { FindReplaceModal } from './FindReplaceModal';
 import { LiveConsoleDrawer } from '../console/LiveConsoleDrawer';
 import { DomainAgentDrawer } from '../agent/DomainAgentDrawer';
+import { selectedWorkbenchDraft } from './workbenchDraftPolicy';
 import '../../styles/workshop.css';
 import '../../styles/console.css';
 
@@ -68,7 +69,7 @@ const SegmentEditor = ({
   onSaved: () => Promise<void>;
 }) => {
   const api = window.kitaujiDesktop?.workflow;
-  const [text, setText] = useState(segment.selectedTranslation ?? segment.originalTranslation ?? '');
+  const [text, setText] = useState(selectedWorkbenchDraft(segment));
   const [isModified, setIsModified] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -77,11 +78,11 @@ const SegmentEditor = ({
 
   useEffect(() => {
     if (!isModified) {
-      setText(segment.selectedTranslation ?? segment.originalTranslation ?? '');
+      setText(selectedWorkbenchDraft(segment));
     }
   }, [segment, isModified]);
 
-  const changed = text !== (segment.selectedTranslation ?? segment.originalTranslation ?? '');
+  const changed = text !== selectedWorkbenchDraft(segment);
 
   const save = async () => {
     if (!api || !changed || !text.trim()) return;

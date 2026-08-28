@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Replace, X, CaseSensitive, WholeWord, Search, Check, Loader2 } from 'lucide-react';
 import type { WorkbenchSegment } from '../../core/workflow/models';
+import { selectedWorkbenchDraft } from './workbenchDraftPolicy';
 
 interface FindReplaceModalProps {
   readonly isOpen: boolean;
@@ -43,7 +44,7 @@ export const FindReplaceModal = ({
       const items: MatchItem[] = [];
 
       for (const segment of segments) {
-        const text = segment.selectedTranslation ?? segment.originalTranslation ?? '';
+        const text = selectedWorkbenchDraft(segment);
         if (!text) continue;
 
         const count = (text.match(regex) || []).length;
